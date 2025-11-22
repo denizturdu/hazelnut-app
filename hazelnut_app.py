@@ -5,22 +5,41 @@ import time
 
 st.set_page_config(page_title="Fındık Fabrikası Yönetimi", layout="wide")
 
-# --- YARDIMCI: ORAN HESAPLAYICI (YENİ DETAYLI) ---
+# --- YARDIMCI: RANDIMAN HESAPLAYICI (KABUKLU İÇİN) ---
+def calculate_randiman(sample_weight, good_kernel, shrivelled_kernel):
+    # Formül: ((Sağlam İç + (Buruşuk / 2)) / Numune Ağırlığı) * 100
+    if sample_weight == 0:
+        return 0.0
+    try:
+        numerator = good_kernel + (shrivelled_kernel / 2)
+        r = (numerator / sample_weight) * 100
+        return r
+    except:
+        return 0.0
+
+# --- YARDIMCI: EKSTRA ORANLAR (KABUKLU İÇİN) ---
+def calculate_extra_rates(good, shriv, vis_rot, hid_rot, tumor):
+    total_kernel = good + shriv + vis_rot + hid_rot + tumor
+    if total_kernel == 0: return 0.0, 0.0, 0.0, 0.0
+    try:
+        tumor_rate = (tumor / total_kernel) * 100
+        shriv_rate = (shriv / total_kernel) * 100
+        vis_rot_rate = (vis_rot / total_kernel) * 100
+        hid_rot_rate = (hid_rot / total_kernel) * 100
+        return tumor_rate, shriv_rate, vis_rot_rate, hid_rot_rate
+    except:
+        return 0.0, 0.0, 0.0, 0.0
+
+# --- YARDIMCI: DETAYLI LABORATUVAR ORANLARI (İÇ/İŞLENMİŞ İÇİN) ---
 def calculate_detailed_rates(base_weight, inputs):
-    """
-    base_weight: İç Numune Ağırlığı (g)
-    inputs: Dictionary of {label: weight_g}
-    Returns: Dictionary of {label: percentage}
-    """
     results = {}
     if base_weight == 0:
         return {k: 0.0 for k in inputs}
     
     for key, val in inputs.items():
-        # Count based items (Adet/Tane) cannot be calculated as % by weight easily
-        # unless we assume a weight. For now we return 0.0 or raw value for counts if needed.
+        # Adet bazlı olanları oranlamıyoruz (sadece gösteriyoruz)
         if "adet" in key or "tane" in key:
-             results[key] = 0.0 
+             results[key] = val 
         else:
             results[key] = (val / base_weight) * 100
     return results
@@ -61,7 +80,7 @@ else:
     if module == "1. Satın Alma":
         st.title("Modül 1: Satın Alma")
         
-        # TABS FOR MAIN CATEGORIES
+        # TABS
         tab_findik, tab_malzeme, tab_genel = st.tabs(["🌰 Fındık Alımı", "📦 Malzeme Alımı", "⚙️ Makine & Hizmet"])
         
         # --- TAB 1: FINDIK ALIMI ---
@@ -93,10 +112,65 @@ else:
                 st.markdown("---")
                 
                 # ============================================================
-                # YENİ BÖLÜM 2: KABUKLU FINDIK İÇİN DETAYLI ANALİZ
+                # SENARYO A: KABUKLU FINDIK (ESKİ STANDART RANDIMAN FORMU)
                 # ============================================================
                 if hazelnut_cat == "Kabuklu Fındık":
-                    st.subheader("2. Detaylı Kalite Analizi (Laboratuvar)")
+                    st.subheader("2. Kalite & Randıman (Kabuklu)")
+                    
+                    col_q1, col_q2 = st.columns([1, 1])
+                    
+                    with col_q1:
+                        st.markdown("**Fiziksel Analiz (Eksper)**")
+                        sample_w = st.number_input("Kabuklu Numune Ağırlığı (g)", value=250.0)
+                        good_k = st.number_input("Sağlam İç (g)", value=0.0)
+                        shriv_k = st.number_input("Buruşuk İç (g)", value=0.0)
+                        vis_rot = st.number_input("Görünen Çürük (g)", value=0.0)
+                        hid_rot = st.number_input("Gizli Çürük (g)", value=0.0)
+                        tumor = st.number_input("Ur (g)", value=0.0)
+                        
+                        s1, s2 = st.columns(2)
+                        size_1 = st.number_input("1. Numara İç - 13 mm üzeri (g)", value=0.0)
+                        under_size = st.number_input("Elek Altı İç - 9 mm altı (g)", value=0.0)
+                        moisture = st.number_input("Nem (%)", 0.0, 20.0, 5.0)
+
+                    with col_q2:
+                        st.markdown("**Miktar ve Fiyatlandırma**")
+                        net_weight = st.number_input("Toplam Net Ağırlık (kg)", min_value=0.0)
+                        
+                        if reg_type == "Emanet":
+                            st.info("Emanet Alım: Fiyat 0 TL")
+                            gross_price = 0.0
+                        else:
+                            gross_price = st.number_input("Borsa Fiyatı (50 Randıman)", value=120.0)
+
+                    st.markdown("---")
+                    calc_pressed = st.form_submit_button("🔄 Randıman Hesapla")
+                    
+                    # Hesaplamalar
+                    randiman = calculate_randiman(sample_w, good_k, shriv_k)
+                    tumor_r, shriv_r, vis_rot_r, hid_rot_r = calculate_extra_rates(good_k, shriv_k, vis_rot, hid_rot, tumor)
+                    
+                    net_price_50 = gross_price / 1.0245
+                    unit_price = net_price_50 * (randiman / 50.0)
+                    total_val = unit_price * net_weight
+
+                    if calc_pressed or True:
+                        k1, k2, k3, k4, k5 = st.columns(5)
+                        k1.metric("Randıman", f"%{randiman:.2f}")
+                        k2.metric("Buruşuk", f"%{shriv_r:.2f}")
+                        k3.metric("Urlu", f"%{tumor_r:.2f}")
+                        k4.metric("G. Çürük", f"%{vis_rot_r:.2f}")
+                        k5.metric("Gizli Çürük", f"%{hid_rot_r:.2f}")
+                        
+                        if reg_type != "Emanet":
+                            st.success(f"💰 **TOPLAM TUTAR:** {total_val:,.2f} TL")
+                            st.caption(f"Baz Fiyat: {net_price_50:.2f} TL | Birim Fiyat: {unit_price:.2f} TL")
+
+                # ============================================================
+                # SENARYO B: İÇ / İŞLENMİŞ FINDIK (YENİ DETAYLI ANALİZ FORMU)
+                # ============================================================
+                else:
+                    st.subheader("2. Detaylı Kalite Analizi (İç/İşlenmiş)")
                     
                     # 1. TEMEL & KİMYASAL
                     st.markdown("##### A. Temel & Kimyasal Analiz")
@@ -108,36 +182,31 @@ else:
 
                     # 2. FİZİKSEL KUSURLAR
                     st.markdown("##### B. Fiziksel Kusurlar (Gram)")
-                    
-                    # Row 1
                     r1c1, r1c2, r1c3, r1c4 = st.columns(4)
                     good_k = r1c1.number_input("Sağlam İç (g)", 0.0)
                     vis_rot = r1c2.number_input("Görünen Çürük (g)", 0.0)
                     hid_rot = r1c3.number_input("Gizli Çürük (g)", 0.0)
                     worm = r1c4.number_input("Kurt Yenikli (g)", 0.0)
                     
-                    # Row 2
                     r2c1, r2c2, r2c3, r2c4 = st.columns(4)
                     vis_mold = r2c1.number_input("Görünen Küflü (g)", 0.0)
                     hid_mold = r2c2.number_input("Gizli Küflü (g)", 0.0)
                     vis_tumor = r2c3.number_input("Görünen Urlu (g)", 0.0)
                     hid_tumor = r2c4.number_input("Gizli Urlu (g)", 0.0)
 
-                    # Row 3
                     r3c1, r3c2, r3c3, r3c4 = st.columns(4)
                     shriv = r3c1.number_input("Buruşuk İç (g)", 0.0)
                     lemon = r3c2.number_input("Limoni (g)", 0.0)
                     decayed = r3c3.number_input("Vurgun (g)", 0.0)
                     broken = r3c4.number_input("Kırık (g)", 0.0)
 
-                    # Row 4
                     r4c1, r4c2, r4c3, r4c4 = st.columns(4)
                     twin = r4c1.number_input("İkiz (g)", 0.0)
                     other_type = r4c2.number_input("Diğer Tipler (g)", 0.0)
                     undersize = r4c3.number_input("Elek Altı (g)", 0.0)
                     oversize = r4c4.number_input("Elek Üstü (g)", 0.0)
 
-                    # 3. DİĞER & MİKROBİYOLOJİK
+                    # 3. DİĞER
                     st.markdown("##### C. Yabancı Madde & Mikrobiyolojik")
                     m1, m2, m3, m4 = st.columns(4)
                     membrane = m1.number_input("Zar Atmayan Tane (adet)", 0)
@@ -150,12 +219,9 @@ else:
                     afla_b1 = m_row2_3.number_input("Aflatoksin B1 (ppb)", 0.0)
                     afla_tot = m_row2_4.number_input("Aflatoksin Total (ppb)", 0.0)
 
-                    # --- HESAPLAMA & SONUÇLAR ---
                     st.markdown("---")
                     calc_btn = st.form_submit_button("🔄 Oranları Hesapla")
                     
-                    # Oransal Hesaplamalar
-                    # Not: Adet olanları oranlayamayız, gram olanları oranlarız.
                     calc_inputs = {
                         "Sağlam İç": good_k, "Görünen Çürük": vis_rot, "Gizli Çürük": hid_rot,
                         "Görünen Küflü": vis_mold, "Gizli Küflü": hid_mold,
@@ -170,102 +236,88 @@ else:
                     
                     if calc_btn or True:
                         st.markdown("##### Analiz Sonuçları (%)")
-                        
-                        # Sonuçları güzel bir Grid içinde gösterelim
                         res_cols = st.columns(6)
                         idx = 0
                         for label, pct in calculated_pcts.items():
                             with res_cols[idx % 6]:
                                 st.metric(label, f"%{pct:.2f}")
                             idx += 1
-                        
-                        # Adet bazlılar (Manuel gösterim)
-                        with res_cols[idx % 6]:
-                            st.metric("Yabancı Madde", f"{foreign_cnt} tane")
-                        with res_cols[(idx+1) % 6]:
-                            st.metric("Zar Atmayan", f"{membrane} adet")
 
-                # ============================================================
-                # İÇ FINDIK / İŞLENMİŞ (BASİT FORM - ESKİ HALİ)
-                # ============================================================
-                else:
-                    st.warning("Bu fındık türü için detaylı analiz henüz tanımlanmadı. Standart form gösteriliyor.")
-                    # Eski basit inputları buraya koyabilirsiniz veya boş bırakabilirsiniz.
-                    # Şimdilik fiyat hesaplaması için basit bir ağırlık alalım
-                    sample_weight = 0
-                    good_k = 0
-                    moisture = st.number_input("Nem (%)", 0.0)
-
-                # ------------------------------------------------
-                # 3. FİNANSAL BİLGİLER (ORTAK)
-                # ------------------------------------------------
-                st.markdown("---")
-                st.subheader("3. Miktar ve Finansal Bilgiler")
-                
-                c_qty, c_price = st.columns(2)
-                
-                with c_qty:
-                    st.caption("Miktar ve Paketleme")
-                    net_weight = st.number_input("Toplam Net Ağırlık (kg)", min_value=0.0)
+                    # --- FİYATLANDIRMA (İÇ/İŞLENMİŞ İÇİN) ---
+                    st.markdown("---")
+                    st.subheader("Miktar ve Fiyatlandırma")
                     
-                    cp1, cp2, cp3 = st.columns(3)
-                    cnt_nylon = cp1.number_input("Naylon", min_value=0)
-                    cnt_jute = cp2.number_input("Jüt", min_value=0)
-                    cnt_bigbag = cp3.number_input("Big Bag", min_value=0)
-
-                with c_price:
-                    st.caption("Fiyatlandırma")
+                    cq1, cq2 = st.columns(2)
+                    net_weight = cq1.number_input("Toplam Net Ağırlık (kg)", min_value=0.0)
+                    
                     if reg_type == "Emanet":
-                        st.info("Emanet Alım")
-                        final_price = 0.0
+                        total_val = 0.0
                     else:
-                        # Detaylı analizde Randıman hesabı (Sample/Inshell) olmadığı için
-                        # Kullanıcıdan direkt fiyatı istiyoruz.
-                        final_price = st.number_input("Anlaşılan Toplam Tutar (TL)", min_value=0.0)
+                        total_val = cq2.number_input("Anlaşılan Toplam Tutar (TL)", min_value=0.0)
                         if net_weight > 0:
-                            st.caption(f"Birim Fiyat: {final_price/net_weight:.2f} TL/kg")
+                            cq2.caption(f"Birim Fiyat: {total_val/net_weight:.2f} TL/kg")
 
+                # ------------------------------------------------
+                # 3. ÖDEME & KAYIT (ORTAK)
+                # ------------------------------------------------
                 st.markdown("---")
-                st.subheader("Ödeme Bilgileri")
+                st.subheader("3. Ödeme ve Kayıt")
+                
+                # Paketleme Ortak
+                st.caption("Paketleme Detayları (Adet)")
+                p1, p2, p3 = st.columns(3)
+                cnt_nylon = p1.number_input("Naylon", min_value=0)
+                cnt_jute = p2.number_input("Jüt", min_value=0)
+                cnt_bigbag = p3.number_input("Big Bag", min_value=0)
+
                 f1, f2, f3 = st.columns(3)
                 doc_num = f1.text_input("Makbuz / Fatura No")
                 pay_amount = f2.number_input("Ödenen Tutar", 0.0)
                 pay_method = f3.selectbox("Ödeme Yöntemi", ["Nakit", "Banka", "Çek"])
                 
                 if reg_type != "Emanet":
-                    st.metric("Kalan Bakiye", f"{final_price - pay_amount:,.2f} TL")
+                    st.metric("Kalan Bakiye", f"{total_val - pay_amount:,.2f} TL")
 
                 submit_save = st.form_submit_button("✅ Kaydet")
                 
                 if submit_save:
-                    # Veritabanı kaydı
+                    # Ortak Payload
                     payload = {
                         "created_by": st.session_state.user.email, "status": "Pending Arrival",
                         "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type,
                         "id_number": id_num, "city": city, "district": dist_in, "village": vill_in,
                         "phone_number": contact, "cert_status": cert_status,
                         "reg_type": reg_type, "location": location, "item_type": hazelnut_type,
-                        "qty_ordered": net_weight, "total_value": final_price, "document_number": doc_num,
-                        "payment_amount": pay_amount, "remaining_balance": final_price - pay_amount,
+                        "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num,
+                        "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount,
                         "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag,
-                        
-                        # YENİ DETAYLI ANALİZ VERİLERİ
-                        "analysis_inner_weight": sample_weight,
                         "moisture": moisture,
-                        "analysis_ffa": ffa, "analysis_peroxide": peroxide,
-                        "analysis_visible_mold": vis_mold, "analysis_hidden_mold": hid_mold,
-                        "analysis_visible_tumor": vis_tumor, "analysis_hidden_tumor": hid_tumor,
-                        "analysis_worm_eaten": worm, "analysis_lemon": lemon, "analysis_decayed": decayed,
-                        "analysis_broken": broken, "analysis_twin": twin, "analysis_other_types": other_type,
-                        "analysis_oversize": oversize, "analysis_shell": shell_g, 
-                        "analysis_membrane_adhered": membrane, "analysis_foreign_matter": foreign_cnt,
-                        "analysis_salmonella": salmonella, "analysis_ecoli": ecoli,
-                        "analysis_afla_b1": afla_b1, "analysis_afla_total": afla_tot,
-                        
-                        # Eski kolonlara uyumluluk (Rapolarda patlamaması için)
-                        "good_kernel": good_k, "visible_rotten": vis_rot, "hidden_rotten": hid_rot,
-                        "shrivelled_kernel": shriv, "undersize_percent": undersize # Gram olarak kaydeder
+                        "good_kernel": good_k, "visible_rotten": vis_rot, "hidden_rotten": hid_rot, 
+                        "shrivelled_kernel": shriv, "tumorous": tumor if 'tumor' in locals() else 0.0
                     }
+
+                    # Kabukluya Özel Eklemeler
+                    if hazelnut_cat == "Kabuklu Fındık":
+                        payload.update({
+                            "sample_weight": sample_w, "calculated_randiman": randiman,
+                            "gross_price_50": gross_price, "net_price_50": net_price_50, "actual_unit_price": unit_price,
+                            "size_1_percent": size_1, "undersize_percent": under_size # Gram olarak
+                        })
+                    
+                    # İç/İşlenmişe Özel Eklemeler
+                    else:
+                        payload.update({
+                            "analysis_inner_weight": sample_weight,
+                            "analysis_ffa": ffa, "analysis_peroxide": peroxide,
+                            "analysis_visible_mold": vis_mold, "analysis_hidden_mold": hid_mold,
+                            "analysis_visible_tumor": vis_tumor, "analysis_hidden_tumor": hid_tumor,
+                            "analysis_worm_eaten": worm, "analysis_lemon": lemon, "analysis_decayed": decayed,
+                            "analysis_broken": broken, "analysis_twin": twin, "analysis_other_types": other_type,
+                            "analysis_oversize": oversize, "analysis_shell": shell_g, 
+                            "analysis_membrane_adhered": membrane, "analysis_foreign_matter": foreign_cnt,
+                            "analysis_salmonella": salmonella, "analysis_ecoli": ecoli,
+                            "analysis_afla_b1": afla_b1, "analysis_afla_total": afla_tot
+                        })
                     
                     try:
                         insert_record("purchases", payload)
