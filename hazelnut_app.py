@@ -45,7 +45,8 @@ else:
         st.session_state.user = None
         st.rerun()
         
-    menu_options = ["1. Satın Alma", "2. Mal Kabul (Kantar)", "3. Yönetici Ayarları", "4. Stok Takibi"]
+    # --- GÜNCELLENMİŞ MENÜ LİSTESİ ---
+    menu_options = ["1. Satın Alma", "2. Fabrika Ürün Girişi", "3. Yönetici Ayarları", "4. Stok Takibi"]
     module = st.sidebar.radio("Menü", menu_options)
 
     # ==========================
@@ -146,7 +147,6 @@ else:
         # --- B. MALZEME ALIMI ---
         elif type_selector == "Malzeme":
             st.subheader("Malzeme Seçimi")
-            # Veritabanındaki Türkçe isimlerle eşleşmeli
             material_cats = ["Ambalaj Malzemeleri", "Bakım Malzemeleri", "Ofis Malzemeleri", "Temizlik Malzemeleri", "Eşantiyon & Hediye", "İş Kıyafetleri", "Gıda ve Mutfak", "Diğer"]
             
             c_cat, c_item = st.columns(2)
@@ -204,17 +204,16 @@ else:
                     st.success("Kaydedildi!")
 
     # ==========================
-    # MODÜL 2: MAL KABUL (KANTAR)
+    # MODÜL 2: FABRİKA ÜRÜN GİRİŞİ (ESKİ ADI: MAL KABUL)
     # ==========================
-    elif module == "2. Mal Kabul (Kantar)":
-        st.title("Modül 2: Mal Kabul (Kantar Girişi)")
+    elif module == "2. Fabrika Ürün Girişi":
+        st.title("Modül 2: Fabrika Ürün Girişi")
         try:
             response = supabase.table("purchases").select("*").eq("status", "Pending Arrival").execute()
             pending_df = pd.DataFrame(response.data)
             
             if not pending_df.empty:
                 st.subheader("Beklenen Sevkiyatlar")
-                # Tablo başlıklarını güncellemek için rename kullanabiliriz ama basit tutalım
                 st.dataframe(pending_df[["id", "supplier", "item_type", "qty_ordered", "location"]])
                 
                 st.markdown("---")
@@ -311,13 +310,24 @@ else:
                 
                 with st.form("modify_form"):
                     st.info(f"Düzenleniyor: {target_name}")
-                    c_new_name = st.text_input("İsim", value=target_row['item_name'])
                     
+                    # Edit Fields
+                    c_new_name = st.text_input("İsim", value=target_row['item_name'])
                     c_mat = st.text_input("Materyal", value=target_row.get('mat_type') or "")
                     c_use = st.text_input("Kullanım", value=target_row.get('use_case') or "")
-                    
+                    c_spec = st.text_input("Diğer", value=target_row.get('other_specs') or "")
+
+                    st.caption("Ölçüler (Dış)")
+                    c_ol = st.number_input("Dış Uzunluk", value=float(target_row.get('dim_outer_l') or 0.0))
+                    c_ow = st.number_input("Dış Genişlik", value=float(target_row.get('dim_outer_w') or 0.0))
+                    c_od = st.number_input("Dış Derinlik", value=float(target_row.get('dim_outer_d') or 0.0))
+
                     if st.form_submit_button("Güncelle"):
-                        supabase.table("material_definitions").update({"item_name": c_new_name, "mat_type": c_mat, "use_case": c_use}).eq("id", target_row['id']).execute()
+                        update_payload = {
+                            "item_name": c_new_name, "mat_type": c_mat, "use_case": c_use, "other_specs": c_spec,
+                            "dim_outer_l": c_ol, "dim_outer_w": c_ow, "dim_outer_d": c_od
+                        }
+                        supabase.table("material_definitions").update(update_payload).eq("id", target_row['id']).execute()
                         st.success("Güncellendi!"); time.sleep(1); st.rerun()
 
             st.markdown("---")
@@ -370,4 +380,4 @@ else:
             st.dataframe(display_df.sort_values(by='created_at', ascending=False), use_container_width=True)
             
         else:
-            st.info("Henüz stok hareketi yok. Mal Kabul modülünden giriş yapınız.")
+            st.info("Henüz stok hareketi yok. Fabrika Ürün Girişi modülünden giriş yapınız.")
