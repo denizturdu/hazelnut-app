@@ -259,7 +259,7 @@ else:
                 st.info("No pending shipments found.")
         except Exception as e: st.error(f"Error: {e}")
 
-    # ==========================
+# ==========================
     # MODULE 3: ADMIN SETTINGS
     # ==========================
     elif module == "3. Admin Settings":
@@ -270,11 +270,14 @@ else:
             st.subheader("Manage Material Definitions")
             fixed_cats = ["Packaging Materials", "Maintenance Materials", "Office Materials", "Cleaning Materials", "Give Aways", "Clothes and Textile", "Food & Kitchen", "Other"]
 
+            # 1. VIEW LIST
             with st.expander("View Full Database List"):
                 current = supabase.table("material_definitions").select("*").execute().data
                 st.dataframe(pd.DataFrame(current), use_container_width=True)
             
             st.markdown("---")
+            
+            # 2. ADD NEW ITEM
             st.write("### ➕ Add New Item")
             with st.form("add_material_form"):
                 c1, c2 = st.columns(2)
@@ -297,6 +300,8 @@ else:
                         st.success("Added!"); time.sleep(1); st.rerun()
 
             st.markdown("---")
+            
+            # 3. MODIFY ITEM (UPDATED: NOW SHOWS ALL FIELDS)
             st.write("### ✏️ Modify Item")
             m1, m2 = st.columns(2)
             mod_cat_filter = m1.selectbox("Filter Category (Modify)", fixed_cats)
@@ -304,17 +309,53 @@ else:
             
             if mod_items:
                 mod_names = [i['item_name'] for i in mod_items]
-                target_name = m2.selectbox("Select Item", mod_names)
+                target_name = m2.selectbox("Select Item to Edit", mod_names)
+                
+                # Find the existing data
                 target_row = next(i for i in mod_items if i["item_name"] == target_name)
                 
                 with st.form("modify_form"):
-                    c_new_name = st.text_input("Name", value=target_row['item_name'])
-                    c_mat = st.text_input("Material", value=target_row.get('mat_type', ''))
-                    if st.form_submit_button("Update"):
-                        supabase.table("material_definitions").update({"item_name": c_new_name, "mat_type": c_mat}).eq("id", target_row['id']).execute()
-                        st.success("Updated!"); time.sleep(1); st.rerun()
+                    st.info(f"Editing ID: {target_row['id']}")
+                    
+                    # General Info
+                    mc1, mc2 = st.columns(2)
+                    m_name = mc1.text_input("Name", value=target_row['item_name'])
+                    m_cat = mc2.selectbox("Category", fixed_cats, index=fixed_cats.index(target_row['category']) if target_row['category'] in fixed_cats else 0)
+                    
+                    # Specs
+                    mg1, mg2, mg3 = st.columns(3)
+                    m_use = mg1.text_input("Use", value=target_row.get('use_case') or "")
+                    m_mat = mg2.text_input("Material", value=target_row.get('mat_type') or "")
+                    m_spec = mg3.text_input("Specs", value=target_row.get('other_specs') or "")
+                    
+                    # Dimensions (We use 'or 0.0' to handle cases where DB is empty/null)
+                    st.caption("Dimensions (Outer)")
+                    mo1, mo2, mo3 = st.columns(3)
+                    m_out_l = mo1.number_input("Outer L", value=float(target_row.get('dim_outer_l') or 0.0))
+                    m_out_w = mo2.number_input("Outer W", value=float(target_row.get('dim_outer_w') or 0.0))
+                    m_out_d = mo3.number_input("Outer D", value=float(target_row.get('dim_outer_d') or 0.0))
+                    
+                    st.caption("Dimensions (Inner)")
+                    mi1, mi2, mi3 = st.columns(3)
+                    m_inn_l = mi1.number_input("Inner L", value=float(target_row.get('dim_inner_l') or 0.0))
+                    m_inn_w = mi2.number_input("Inner W", value=float(target_row.get('dim_inner_w') or 0.0))
+                    m_inn_d = mi3.number_input("Inner D", value=float(target_row.get('dim_inner_d') or 0.0))
+
+                    if st.form_submit_button("Update Item"):
+                        update_payload = {
+                            "item_name": m_name, "category": m_cat,
+                            "use_case": m_use, "mat_type": m_mat, "other_specs": m_spec,
+                            "dim_outer_l": m_out_l, "dim_outer_w": m_out_w, "dim_outer_d": m_out_d,
+                            "dim_inner_l": m_inn_l, "dim_inner_w": m_inn_w, "dim_inner_d": m_inn_d
+                        }
+                        supabase.table("material_definitions").update(update_payload).eq("id", target_row['id']).execute()
+                        st.success("Updated successfully!"); time.sleep(1); st.rerun()
+            else:
+                st.warning("No items found in this category.")
 
             st.markdown("---")
+            
+            # 4. DELETE ITEM
             st.write("### 🗑️ Delete Item")
             d1, d2, d3 = st.columns([2, 2, 1])
             del_cat = d1.selectbox("Filter Category (Delete)", fixed_cats)
