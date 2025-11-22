@@ -122,7 +122,7 @@ else:
                 if temp_total_inner > 0:
                     st.caption(f"📊 Anlık Oranlar: Buruşuk: {show_percent(w_shriv, base_calc)} | G.Çürük: {show_percent(w_vis_rot, base_calc)} | Gizli Çürük: {show_percent(w_hid_rot, base_calc)} | Ur: {show_percent(w_tumor, base_calc)}")
                 s1, s2 = st.columns(2)
-                w_over = s1.number_input("1. Numara İç - 13 mm üzeri (g)", 0.0)
+                w_over = s1.number_input(" 1.Numara İç - 13 mm üzeri (g)", 0.0)
                 w_under = s2.number_input("Elek Altı İç - 9 mm altı (g)", 0.0)
                 val_moist = st.number_input("Nem (%)", 0.0, 100.0, 5.0)
             
@@ -274,7 +274,7 @@ else:
                 if hazelnut_cat == "Kabuklu Fındık":
                     st.markdown("##### D. Kabuklu Ekstra Boylama (Gram)")
                     ex1, ex2 = st.columns(2)
-                    size_1_g = ex1.number_input("1. Numara İç - 13 mm üzeri (g)", 0.0)
+                    size_1_g = ex1.number_input(" 1.Numara İç - 13 mm üzeri (g)", 0.0)
                     undersize_g = ex2.number_input("Elek Altı İç - 9 mm altı (g)", 0.0)
                 else:
                     # Varsayılan 0 (Hata vermemesi için)
@@ -310,7 +310,7 @@ else:
                         
                         # Ekstra Kabuklu Raporu
                         if hazelnut_cat == "Kabuklu Fındık":
-                            if size_1_g > 0: report_data.append({"Parametre": "1. Numara (13mm+)", "Girdi (g)": f"{size_1_g} g", "Sonuç": f"%{(size_1_g/w_sample)*100:.2f}"})
+                            if size_1_g > 0: report_data.append({"Parametre": " 1.Numara (13mm+)", "Girdi (g)": f"{size_1_g} g", "Sonuç": f"%{(size_1_g/w_sample)*100:.2f}"})
                             if undersize_g > 0: report_data.append({"Parametre": "Elek Altı (9mm-)", "Girdi (g)": f"{undersize_g} g", "Sonuç": f"%{(undersize_g/w_sample)*100:.2f}"})
 
                         if val_moist > 0: report_data.append({"Parametre": "Nem", "Girdi (g)": "-", "Sonuç": f"%{val_moist}"})
