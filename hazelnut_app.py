@@ -7,34 +7,24 @@ st.set_page_config(page_title="Fındık Fabrikası Yönetimi", layout="wide")
 
 # --- YARDIMCI: RANDIMAN HESAPLAYICI ---
 def calculate_randiman(sample_weight, good_kernel, shrivelled_kernel):
-    # Formül: ((Sağlam İç + (Buruşuk / 2)) / Numune Ağırlığı) * 100
-    if sample_weight == 0:
-        return 0.0
+    if sample_weight == 0: return 0.0
     try:
         numerator = good_kernel + (shrivelled_kernel / 2)
         r = (numerator / sample_weight) * 100
         return r
-    except:
-        return 0.0
+    except: return 0.0
 
 # --- YARDIMCI: EKSTRA ORAN HESAPLAYICI ---
-def calculate_extra_rates(sample_weight, good, shriv, vis_rot, hid_rot, tumor, size1, undersize):
+def calculate_extra_rates(good, shriv, vis_rot, hid_rot, tumor):
     total_kernel = good + shriv + vis_rot + hid_rot + tumor
-    base_weight = total_kernel if total_kernel > 0 else 1
-    
+    if total_kernel == 0: return 0.0, 0.0, 0.0, 0.0
     try:
-        tumor_rate = (tumor / base_weight) * 100
-        shriv_rate = (shriv / base_weight) * 100
-        vis_rot_rate = (vis_rot / base_weight) * 100
-        hid_rot_rate = (hid_rot / base_weight) * 100
-        
-        # Boylama Oranları (Genellikle toplam iç ağırlığa göre)
-        size1_rate = (size1 / base_weight) * 100
-        undersize_rate = (undersize / base_weight) * 100
-        
-        return tumor_rate, shriv_rate, vis_rot_rate, hid_rot_rate, size1_rate, undersize_rate
-    except:
-        return 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+        tumor_rate = (tumor / total_kernel) * 100
+        shriv_rate = (shriv / total_kernel) * 100
+        vis_rot_rate = (vis_rot / total_kernel) * 100
+        hid_rot_rate = (hid_rot / total_kernel) * 100
+        return tumor_rate, shriv_rate, vis_rot_rate, hid_rot_rate
+    except: return 0.0, 0.0, 0.0, 0.0
 
 # --- GİRİŞ SİSTEMİ ---
 if 'user' not in st.session_state:
@@ -58,7 +48,6 @@ def login_section():
 if not st.session_state.user:
     login_section()
 else:
-    # Kenar Çubuğu
     st.sidebar.info(f"Kullanıcı: {st.session_state.user.email}")
     if st.sidebar.button("Çıkış Yap"):
         st.session_state.user = None
@@ -68,22 +57,23 @@ else:
     module = st.sidebar.radio("Menü", menu_options)
 
     # ==========================
-    # MODÜL 1: SATIN ALMA
+    # MODÜL 1: SATIN ALMA (TABS İLE GÜNCELLENDİ)
     # ==========================
     if module == "1. Satın Alma":
         st.title("Modül 1: Satın Alma")
         
-        hazelnut_group = ["Kabuklu Fındık", "İç Fındık", "İşlenmiş Fındık"]
-        general_group = ["Malzeme", "Makine", "Hizmet"]
-        all_options = hazelnut_group + general_group
+        # --- TAB YAPISI OLUŞTURULUYOR ---
+        tab_findik, tab_malzeme, tab_genel = st.tabs(["🌰 Fındık Alımı", "📦 Malzeme Alımı", "⚙️ Makine & Hizmet"])
         
-        type_selector = st.selectbox("Satın Alma Kategorisi", all_options)
-        
-        # --- A. FINDIK ALIMI ---
-        if type_selector in hazelnut_group:
+        # -----------------------------
+        # TAB 1: FINDIK ALIMI
+        # -----------------------------
+        with tab_findik:
+            # Hangi fındık türü olduğunu burada seçiyoruz
+            hazelnut_cat = st.selectbox("Fındık Kategorisi", ["Kabuklu Fındık", "İç Fındık", "İşlenmiş Fındık"])
+            
             with st.form("hazelnut_form"):
                 st.subheader("1. Müstahsil & Tedarikçi")
-                
                 c1, c2, c3 = st.columns(3)
                 supplier = c1.text_input("Tedarikçi Adı")
                 sup_type = c2.selectbox("Tedarikçi Tipi", ["Müstahsil", "Tüccar", "Şirket"])
@@ -105,66 +95,50 @@ else:
                 hazelnut_type = c9.selectbox("Fındık Çeşidi", ["Karışık", "Giresun Tombul", "Çakıldak", "Kara", "Sivri", "Palaz", "Badem", "Foşa", "Yomra"])
                 
                 st.markdown("---")
-                st.subheader("2. Kalite, Miktar ve Fiyatlandırma")
+                st.subheader("2. Kalite & Randıman")
+                q1, q2, q3 = st.columns(3)
+                sample_w = q1.number_input("Kabuklu Numune Ağırlığı (g)", value=250.0)
+                good_k = q2.number_input("Sağlam İç (g)", value=0.0)
+                shriv_k = q3.number_input("Buruşuk İç (g)", value=0.0)
                 
-                col_q1, col_q2 = st.columns([1, 1])
+                d1, d2, d3 = st.columns(3)
+                vis_rot = d1.number_input("Görünen Çürük (g)", value=0.0)
+                hid_rot = d2.number_input("Gizli Çürük (g)", value=0.0)
+                tumor = d3.number_input("Ur (g)", value=0.0)
+
+                s1, s2, s3 = st.columns(3)
+                size_1 = s1.number_input("1. Numara İç - 13 mm üzeri (g)", value=0.0)
+                under_size = s2.number_input("Elek Altı İç - 9 mm altı (g)", value=0.0)
+                moisture = s3.number_input("Nem (%)", 0.0, 20.0, 5.0)
                 
-                with col_q1:
-                    st.markdown("**Kalite Analizi (Eksper)**")
-                    sample_w = st.number_input("Kabuklu Numune Ağırlığı (g)", value=250.0)
-                    good_k = st.number_input("Sağlam İç (g)", value=0.0)
-                    shriv_k = st.number_input("Buruşuk İç (g)", value=0.0)
-                    vis_rot = st.number_input("Görünen Çürük (g)", value=0.0)
-                    hid_rot = st.number_input("Gizli Çürük (g)", value=0.0)
-                    tumor = st.number_input("Ur (g)", value=0.0)
-                    
-                    s1, s2 = st.columns(2)
-                    size_1_g = s1.number_input("1. Numara İç - 13 mm üzeri (g)", value=0.0)
-                    undersize_g = s2.number_input("Elek Altı İç - 9 mm altı (g)", value=0.0)
-                    moisture = st.number_input("Nem (%)", 0.0, 20.0, 5.0)
-
-                with col_q2:
-                    st.markdown("**Miktar ve Paketleme**")
-                    net_weight = st.number_input("Toplam Net Ağırlık (kg)", min_value=0.0)
-                    
-                    st.caption("Paket Adetleri")
-                    p1, p2, p3 = st.columns(3)
-                    cnt_nylon = p1.number_input("Naylon", min_value=0)
-                    cnt_jute = p2.number_input("Jüt", min_value=0)
-                    cnt_bigbag = p3.number_input("Big Bag", min_value=0)
-                    
-                    st.markdown("---")
-                    st.markdown("**Fiyatlandırma**")
-                    
-                    if reg_type == "Emanet":
-                        st.info("Emanet Alım: Fiyat 0 TL")
-                        gross_price = 0.0
-                    else:
-                        gross_price = st.number_input("Borsa Fiyatı (50 Randıman)", value=120.0)
-
-                st.markdown("---")
                 calc_pressed = st.form_submit_button("🔄 Hesapla (Randıman & Fiyat)")
                 
                 randiman = calculate_randiman(sample_w, good_k, shriv_k)
-                tumor_r, shriv_r, vis_rot_r, hid_rot_r, size1_r, under_r = calculate_extra_rates(
-                    sample_w, good_k, shriv_k, vis_rot, hid_rot, tumor, size_1_g, undersize_g
-                )
+                tumor_r, shriv_r, vis_rot_r, hid_rot_r = calculate_extra_rates(good_k, shriv_k, vis_rot, hid_rot, tumor)
                 
+                if reg_type == "Emanet":
+                    gross_price = 0.0
+                else:
+                    # Borsa fiyatını buraya, hesaplamanın yanına taşıdık (isteğiniz üzerine)
+                    gross_price = st.number_input("Borsa Fiyatı (50 Randıman)", value=120.0)
+
                 net_price_50 = gross_price / 1.0245
                 unit_price = net_price_50 * (randiman / 50.0)
+                
+                # Miktar Girişi (Hesaplama için gerekli)
+                st.caption("Toplam Miktar")
+                net_weight = st.number_input("Toplam Net Ağırlık (kg)", min_value=0.0)
                 total_val = unit_price * net_weight
 
                 if calc_pressed or True: 
                     k1, k2, k3 = st.columns(3)
                     k1.metric("Randıman", f"%{randiman:.2f}")
-                    k2.metric("13mm+ Oranı", f"%{size1_r:.2f}")
-                    k3.metric("Elek Altı Oranı", f"%{under_r:.2f}")
+                    k2.metric("Buruşuk", f"%{shriv_r:.2f}")
+                    k3.metric("Urlu", f"%{tumor_r:.2f}")
                     
-                    k4, k5, k6, k7 = st.columns(4)
-                    k4.metric("Buruşuk", f"%{shriv_r:.2f}")
-                    k5.metric("Urlu", f"%{tumor_r:.2f}")
-                    k6.metric("G. Çürük", f"%{vis_rot_r:.2f}")
-                    k7.metric("Gizli Çürük", f"%{hid_rot_r:.2f}")
+                    k4, k5 = st.columns(2)
+                    k4.metric("Görünen Çürük", f"%{vis_rot_r:.2f}")
+                    k5.metric("Gizli Çürük", f"%{hid_rot_r:.2f}")
                     
                     if reg_type != "Emanet":
                         st.success(f"💰 **TOPLAM TUTAR:** {total_val:,.2f} TL")
@@ -173,8 +147,14 @@ else:
                         f2.write(f"**Randımanlı Birim Fiyat:** {unit_price:.2f} TL")
 
                 st.markdown("---")
-                st.subheader("3. Finansal Bilgiler (Ödeme)")
+                st.subheader("3. Finansal Bilgiler")
                 
+                st.caption("Paketleme Detayları (Adet Giriniz)")
+                p1, p2, p3 = st.columns(3)
+                cnt_nylon = p1.number_input("Naylon Çuval Adedi", min_value=0, step=1)
+                cnt_jute = p2.number_input("Jüt Çuval Adedi", min_value=0, step=1)
+                cnt_bigbag = p3.number_input("Big Bag Adedi", min_value=0, step=1)
+
                 f1, f2, f3 = st.columns(3)
                 doc_num = f1.text_input("Müstahsil Makbuzu No")
                 pay_amount = f2.number_input("Yapılan Ödeme Tutar", value=0.0)
@@ -184,19 +164,19 @@ else:
                 if reg_type != "Emanet":
                     st.metric("Kalan Bakiye", f"{remaining:,.2f} TL")
 
-                submit_save = st.form_submit_button("✅ Kaydet ve Bitir")
+                submit_hazelnut = st.form_submit_button("✅ Fındık Sözleşmesini Kaydet")
                 
-                if submit_save:
+                if submit_hazelnut:
                     payload = {
                         "created_by": st.session_state.user.email, "status": "Pending Arrival",
-                        "category": type_selector, "supplier": supplier, "supplier_type": sup_type,
+                        "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type,
                         "id_number": id_num, "city": city, "district": dist_in, "village": vill_in,
                         "phone_number": contact, "cert_status": cert_status,
                         "reg_type": reg_type, "location": location, "item_type": hazelnut_type,
                         "sample_weight": sample_w, "good_kernel": good_k, "shrivelled_kernel": shriv_k,
                         "calculated_randiman": randiman, "visible_rotten": vis_rot, "hidden_rotten": hid_rot,
                         "tumorous": tumor, 
-                        "size_1_percent": size_1_g, "undersize_percent": undersize_g, 
+                        "size_1_percent": size_1, "undersize_percent": under_size, 
                         "moisture": moisture,
                         "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag,
                         "qty_ordered": net_weight, "document_number": doc_num, "gross_price_50": gross_price,
@@ -205,14 +185,17 @@ else:
                     }
                     try:
                         insert_record("purchases", payload)
-                        st.success("Sözleşme Başarıyla Kaydedildi!")
+                        st.success("Fındık Alımı Başarıyla Kaydedildi!")
                     except Exception as e: st.error(f"Hata: {e}")
 
-        # --- B. MALZEME ALIMI ---
-        elif type_selector == "Malzeme":
+        # -----------------------------
+        # TAB 2: MALZEME ALIMI
+        # -----------------------------
+        with tab_malzeme:
             st.subheader("Malzeme Seçimi")
             material_cats = ["Ambalaj Malzemeleri", "Bakım Malzemeleri", "Ofis Malzemeleri", "Temizlik Malzemeleri", "Eşantiyon & Hediye", "İş Kıyafetleri", "Gıda ve Mutfak", "Diğer"]
             
+            # Form dışı seçimler (dinamik güncelleme için)
             c_cat, c_item = st.columns(2)
             selected_mat_cat = c_cat.selectbox("Kategori", material_cats)
             
@@ -231,36 +214,38 @@ else:
                         sp1, sp2, sp3 = st.columns(3)
                         sp1.write(f"**Materyal:** {selected_item_data.get('mat_type', '-')}")
                         sp2.write(f"**Kullanım:** {selected_item_data.get('use_case', '-')}")
-                        # YENİ EKLENEN BİLGİLER
                         sp3.write(f"**Satış Birimi:** {selected_item_data.get('sales_unit', '-')} ({selected_item_data.get('unit_quantity', 1)} adet)")
                         
                         sp4, sp5 = st.columns(2)
                         sp4.write(f"**Notlar:** {selected_item_data.get('notes', '-')}")
-                        # YENİ BOYUT FORMATI
                         sp5.caption(f"Dış Boyutlar: {selected_item_data.get('dim_outer', '-')}")
-                        sp5.caption(f"Ağırlık: {selected_item_data.get('unit_weight_g', '-')} g")
             else:
                 c_item.warning("Bu kategoride tanımlı malzeme yok.")
                 selected_item_name = c_item.text_input("Manuel Malzeme Adı")
 
-            with st.form("material_form"):
+            with st.form("material_purchase_form"):
                 supplier = st.text_input("Tedarikçi")
                 c3, c4 = st.columns(2)
                 qty = c3.number_input("Miktar (Sipariş Edilen Birim)", min_value=1.0, value=1.0)
                 price = c4.number_input("Toplam Maliyet (TL)", min_value=0.0)
                 
-                if st.form_submit_button("✅ Siparişi Oluştur"):
+                if st.form_submit_button("✅ Malzeme Siparişini Kaydet"):
                     payload = {
                         "category": "Malzeme", "supplier": supplier, "item_type": selected_item_name,
                         "item_sub_type": selected_mat_cat, "qty_ordered": qty, "total_value": price,
                         "status": "Pending Arrival", "created_by": st.session_state.user.email
                     }
                     insert_record("purchases", payload)
-                    st.success("Sipariş Kaydedildi!")
+                    st.success("Malzeme Siparişi Kaydedildi!")
 
-        # --- C. GENEL (Makine, Hizmet) ---
-        else:
-            with st.form("general_form"):
+        # -----------------------------
+        # TAB 3: GENEL (MAKİNE & HİZMET)
+        # -----------------------------
+        with tab_genel:
+            st.subheader("Genel Satın Alma (Makine & Hizmet)")
+            general_type = st.selectbox("Alım Türü", ["Makine", "Hizmet"])
+            
+            with st.form("general_purchase_form"):
                 c1, c2 = st.columns(2)
                 supplier = c1.text_input("Tedarikçi / Sağlayıcı")
                 item_desc = c2.text_input("Açıklama / İsim")
@@ -269,9 +254,9 @@ else:
                 price = c4.number_input("Toplam Tutar", 0.0)
                 
                 if st.form_submit_button("✅ Siparişi Oluştur"):
-                    payload = {"category": type_selector, "supplier": supplier, "item_type": item_desc, "qty_ordered": qty, "total_value": price, "status": "Pending Arrival", "created_by": st.session_state.user.email}
+                    payload = {"category": general_type, "supplier": supplier, "item_type": item_desc, "qty_ordered": qty, "total_value": price, "status": "Pending Arrival", "created_by": st.session_state.user.email}
                     insert_record("purchases", payload)
-                    st.success("Kaydedildi!")
+                    st.success("Genel Sipariş Kaydedildi!")
 
     # ==========================
     # MODÜL 2: FABRİKA ÜRÜN GİRİŞİ
@@ -360,7 +345,6 @@ else:
                 unit_q = u2.number_input("Satış Birimindeki Adet/Miktar", value=1.0)
                 notes_txt = st.text_area("Notlar")
 
-                # --- GÜNCELLENEN BOYUT ALANLARI (TEXT) ---
                 st.caption("Boyutlar ve Ağırlık")
                 o1, o2, o3 = st.columns(3)
                 dim_out_txt = o1.text_input("Dış Boyutlar (En x Boy x Yükseklik) mm")
@@ -373,10 +357,7 @@ else:
                             "category": new_cat, "item_name": new_item, 
                             "use_case": use_case, "mat_type": mat_type, "other_specs": other_spec, 
                             "sales_unit": sales_u, "unit_quantity": unit_q, "notes": notes_txt,
-                            # YENİ ALANLAR
-                            "dim_outer": dim_out_txt, 
-                            "dim_inner": dim_in_txt, 
-                            "unit_weight_g": weight_g
+                            "dim_outer": dim_out_txt, "dim_inner": dim_in_txt, "unit_weight_g": weight_g
                         }
                         supabase.table("material_definitions").insert(payload).execute()
                         st.success("Eklendi!"); time.sleep(1); st.rerun()
