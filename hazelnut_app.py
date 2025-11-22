@@ -331,25 +331,29 @@ else:
         with tab1:
             st.subheader("Manage Material Definitions")
             
+            # 1. VIEW CURRENT LIST
             with st.expander("View Full Database List"):
                 current_materials = supabase.table("material_definitions").select("*").execute().data
                 st.dataframe(pd.DataFrame(current_materials), use_container_width=True)
-            
-            st.markdown("---")
-            st.write("### ➕ Add New Item")
-            c1, c2, c3 = st.columns([2, 2, 1])
             
             fixed_cats = [
                 "Packaging Materials", "Maintenance Materials", "Office Materials",
                 "Cleaning Materials", "Give Aways", "Clothes and Textile",
                 "Food & Kitchen", "Other"
             ]
+
+            st.markdown("---")
+            
+            # 2. ADD NEW ITEM
+            st.write("### ➕ Add New Item")
+            c1, c2, c3 = st.columns([2, 2, 1])
             
             new_cat = c1.selectbox("Category", fixed_cats, key="add_cat")
-            new_item = c2.text_input("New Item Name", key="add_item")
+            new_item = c2.text_input("New Item Name (e.g. Printer Ink)", key="add_item")
             
             if c3.button("Add Item"):
                 if new_item:
+                    # Check duplicates
                     check = supabase.table("material_definitions").select("*").eq("category", new_cat).eq("item_name", new_item).execute()
                     if not check.data:
                         supabase.table("material_definitions").insert({
@@ -365,15 +369,61 @@ else:
                     st.error("Please type an item name.")
             
             st.markdown("---")
+
+            # 3. MODIFY ITEM (NEW SECTION)
+            st.write("### ✏️ Modify Item")
+            st.info("Select an item to rename it or move it to a different category.")
+            
+            m1, m2 = st.columns(2)
+            
+            # Step A: Find the item
+            mod_cat_filter = m1.selectbox("Filter by Category", fixed_cats, key="mod_filter")
+            
+            # Fetch items for this category
+            mod_items_data = supabase.table("material_definitions").select("*").eq("category", mod_cat_filter).order('item_name').execute().data
+            
+            if mod_items_data:
+                mod_item_names = [item['item_name'] for item in mod_items_data]
+                target_item_name = m2.selectbox("Select Item to Edit", mod_item_names, key="mod_select")
+                
+                # Get the ID of the selected item
+                target_row = next(item for item in mod_items_data if item["item_name"] == target_item_name)
+                target_id = target_row['id']
+                
+                # Step B: Show inputs to change it
+                with st.form("modify_form"):
+                    st.write(f"Editing: **{target_item_name}**")
+                    c_new_cat = st.selectbox("New Category", fixed_cats, index=fixed_cats.index(mod_cat_filter))
+                    c_new_name = st.text_input("New Item Name", value=target_item_name)
+                    
+                    if st.form_submit_button("Update Item"):
+                        supabase.table("material_definitions").update({
+                            "category": c_new_cat,
+                            "item_name": c_new_name
+                        }).eq("id", target_id).execute()
+                        
+                        st.success("Item Updated Successfully!")
+                        time.sleep(1)
+                        st.rerun()
+            else:
+                m2.warning("No items in this category.")
+
+            st.markdown("---")
+
+            # 4. DELETE ITEM
             st.write("### 🗑️ Delete Item")
+            
             d1, d2, d3 = st.columns([2, 2, 1])
             
             del_cat = d1.selectbox("Filter by Category", fixed_cats, key="del_cat")
-            filtered_items_data = supabase.table("material_definitions").select("*").eq("category", del_cat).execute().data
             
-            if filtered_items_data:
-                item_names = [item['item_name'] for item in filtered_items_data]
-                item_to_delete = d2.selectbox("Select Item to Remove", item_names, key="del_item")
+            # Fetch items
+            del_items_data = supabase.table("material_definitions").select("*").eq("category", del_cat).execute().data
+            
+            if del_items_data:
+                del_item_names = [item['item_name'] for item in del_items_data]
+                item_to_delete = d2.selectbox("Select Item to Remove", del_item_names, key="del_item")
+                
                 if d3.button("Delete Selected"):
                     supabase.table("material_definitions").delete().eq("category", del_cat).eq("item_name", item_to_delete).execute()
                     st.success(f"Deleted {item_to_delete}")
