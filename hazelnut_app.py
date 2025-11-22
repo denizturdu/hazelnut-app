@@ -45,7 +45,7 @@ else:
         st.session_state.user = None
         st.rerun()
         
-    menu_options = ["1. Satın Alma", "2. Fabrika Ürün Girişi", "3. Yönetici Ayarları", "4. Stok Takibi"]
+    menu_options = ["1. Satın Alma", "2. Mal Kabul (Kantar)", "3. Yönetici Ayarları", "4. Stok Takibi"]
     module = st.sidebar.radio("Menü", menu_options)
 
     # ==========================
@@ -63,16 +63,16 @@ else:
         # --- A. FINDIK ALIMI ---
         if type_selector in hazelnut_group:
             with st.form("hazelnut_form"):
-                st.subheader("1. Müstahsil & Tedarikçi")
+                st.subheader("1. Müstahsil & Kaynak")
                 c1, c2, c3 = st.columns(3)
-                supplier = c1.text_input("Tedarikçi İsmi")
-                sup_type = c2.selectbox("Tedarikçi Tipi", ["Müstahsil", "Manav", "Fabrika"])
+                supplier = c1.text_input("Tedarikçi Adı")
+                sup_type = c2.selectbox("Tedarikçi Tipi", ["Müstahsil", "Tüccar", "Şirket"])
                 id_num = c3.text_input("TCKN / VKN")
                 
                 c4, c5, c6 = st.columns(3)
                 city = c4.text_input("İl / İlçe / Köy")
                 contact = c5.text_input("Telefon No")
-                cert_status = c6.selectbox("Sertifikasyon", ["Yok", "Organik", "Rainforest Alliance", "Avella", "TekFındık"])
+                cert_status = c6.selectbox("Sertifikasyon", ["Yok", "Organik", "Rainforest Alliance", "Avella"])
 
                 c7, c8, c9 = st.columns(3)
                 reg_type = c7.selectbox("Alım Şekli", ["Satın Alma", "Emanet"])
@@ -207,7 +207,7 @@ else:
     # MODÜL 2: MAL KABUL (KANTAR)
     # ==========================
     elif module == "2. Mal Kabul (Kantar)":
-        st.title("2. Fabrika Ürün Girişi")
+        st.title("Modül 2: Mal Kabul (Kantar Girişi)")
         try:
             response = supabase.table("purchases").select("*").eq("status", "Pending Arrival").execute()
             pending_df = pd.DataFrame(response.data)
