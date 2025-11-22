@@ -204,10 +204,10 @@ else:
                     st.success("Kaydedildi!")
 
     # ==========================
-    # MODÜL 2: FABRİKA ÜRÜN GİRİŞİ
+    # MODÜL 2: MAL KABUL (KANTAR)
     # ==========================
-    elif module == "2. Fabrika Ürün Girişi":
-        st.title("Modül 2: Fabrika Ürün Girişi")
+    elif module == "2. Mal Kabul (Kantar)":
+        st.title("Modül 2: Mal Kabul (Kantar Girişi)")
         try:
             response = supabase.table("purchases").select("*").eq("status", "Pending Arrival").execute()
             pending_df = pd.DataFrame(response.data)
