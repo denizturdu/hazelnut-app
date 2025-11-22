@@ -19,22 +19,25 @@ def calculate_randiman(sample_weight, good_kernel, shrivelled_kernel):
 
 # --- YARDIMCI: EKSTRA ORAN HESAPLAYICI ---
 def calculate_extra_rates(good, shriv, vis_rot, hid_rot, tumor):
-    # Toplam İç Ağırlığı (Total Kernel Weight)
+    # Toplam İç Ağırlığı
     total_kernel = good + shriv + vis_rot + hid_rot + tumor
     
     if total_kernel == 0:
-        return 0.0, 0.0
+        return 0.0, 0.0, 0.0, 0.0
     
     try:
-        # Urlu Oranı (Tumor Rate)
+        # 1. Urlu Oranı
         tumor_rate = (tumor / total_kernel) * 100
-        
-        # Buruşuk Oranı (Shrivelled Rate)
+        # 2. Buruşuk Oranı
         shriv_rate = (shriv / total_kernel) * 100
+        # 3. Görünür Çürük Oranı
+        vis_rot_rate = (vis_rot / total_kernel) * 100
+        # 4. Gizli Çürük Oranı
+        hid_rot_rate = (hid_rot / total_kernel) * 100
         
-        return tumor_rate, shriv_rate
+        return tumor_rate, shriv_rate, vis_rot_rate, hid_rot_rate
     except:
-        return 0.0, 0.0
+        return 0.0, 0.0, 0.0, 0.0
 
 # --- GİRİŞ SİSTEMİ ---
 if 'user' not in st.session_state:
@@ -126,13 +129,18 @@ else:
                 
                 # Hesaplamalar
                 randiman = calculate_randiman(sample_w, good_k, shriv_k)
-                tumor_ratio, shriv_ratio = calculate_extra_rates(good_k, shriv_k, vis_rot, hid_rot, tumor)
+                tumor_ratio, shriv_ratio, vis_rot_ratio, hid_rot_ratio = calculate_extra_rates(good_k, shriv_k, vis_rot, hid_rot, tumor)
                 
-                # Sonuçları Göster (3 Kolon)
+                # Sonuçları Göster (İki satıra böldük)
+                st.markdown("##### Analiz Sonuçları")
                 res1, res2, res3 = st.columns(3)
                 res1.metric("Randıman", f"{randiman:.2f}%")
-                res2.metric("Urlu Oranı", f"{tumor_ratio:.2f}%")
-                res3.metric("Buruşuk Oranı", f"{shriv_ratio:.2f}%")
+                res2.metric("Buruşuk Oranı", f"{shriv_ratio:.2f}%")
+                res3.metric("Urlu Oranı", f"{tumor_ratio:.2f}%")
+                
+                res4, res5 = st.columns(2)
+                res4.metric("Görünen Çürük Oranı", f"{vis_rot_ratio:.2f}%")
+                res5.metric("Gizli Çürük Oranı", f"{hid_rot_ratio:.2f}%")
 
                 st.markdown("---")
                 st.subheader("3. Finansal Bilgiler")
