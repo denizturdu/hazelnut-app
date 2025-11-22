@@ -77,7 +77,8 @@ else:
 
                 c7, c8, c9 = st.columns(3)
                 reg_type = c7.selectbox("Alım Şekli", ["Satın Alma", "Emanet"])
-                location = c8.selectbox("Alım Yeri", ["Fabrika", "Tarla", "Manav/Depo"])
+                # GÜNCELLENEN ETİKET: TESLİMAT YERİ
+                location = c8.selectbox("Teslimat Yeri", ["Fabrika", "Tarla", "Manav/Depo"])
                 hazelnut_type = c9.selectbox("Fındık Çeşidi", ["Karışık", "Giresun Tombul", "Çakıldak", "Kara", "Sivri", "Palaz", "Badem", "Foşa", "Yomra"])
                 
                 st.markdown("---")
@@ -92,7 +93,6 @@ else:
                 hid_rot = d2.number_input("Gizli Çürük (g)", value=0.0)
                 tumor = d3.number_input("Ur (g)", value=0.0)
 
-                # --- GÜNCELLENEN ETİKETLER ---
                 s1, s2, s3 = st.columns(3)
                 size_1 = s1.number_input("1. Numara (13 mm üzeri (%) )", value=0.0)
                 under_size = s2.number_input("Elek Altı (9 mm altı (%) )", value=0.0)
