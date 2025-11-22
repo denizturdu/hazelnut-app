@@ -7,7 +7,7 @@ st.set_page_config(page_title="Fındık Fabrikası Yönetimi", layout="wide")
 
 # --- YARDIMCI: RANDIMAN HESAPLAYICI ---
 def calculate_randiman(sample_weight, good_kernel, shrivelled_kernel):
-    # Formül: ((Sağlam İç + (Buruşuk / 2)) / Numune Ağırlığı) * 100
+    # Formül: ((Sağlam İç + (Buruk / 2)) / Numune Ağırlığı) * 100
     if sample_weight == 0:
         return 0.0
     try:
@@ -63,7 +63,6 @@ else:
         # --- A. FINDIK ALIMI ---
         if type_selector in hazelnut_group:
             with st.form("hazelnut_form"):
-                # --- GÜNCELLENMİŞ BAŞLIK BURADA ---
                 st.subheader("1. Müstahsil & Tedarikçi")
                 
                 c1, c2, c3 = st.columns(3)
@@ -86,7 +85,7 @@ else:
                 q1, q2, q3 = st.columns(3)
                 sample_w = q1.number_input("Numune Ağırlığı (g)", value=250.0)
                 good_k = q2.number_input("Sağlam İç (g)", value=0.0)
-                shriv_k = q3.number_input("Buruşuk İç (g)", value=0.0)
+                shriv_k = q3.number_input("Buruk İç (g)", value=0.0)
                 
                 d1, d2, d3 = st.columns(3)
                 vis_rot = d1.number_input("Görünen Çürük (g)", value=0.0)
@@ -94,8 +93,8 @@ else:
                 tumor = d3.number_input("Ur (g)", value=0.0)
 
                 s1, s2, s3 = st.columns(3)
-                size_1 = s1.number_input("1 Numara (13mm üzeri) (%)", value=0.0)
-                under_size = s2.number_input("Elek Altı (9mm altı) (%)", value=0.0)
+                size_1 = s1.number_input("Boy 1 %>13mm (%)", value=0.0)
+                under_size = s2.number_input("Elek Altı %<9mm (%)", value=0.0)
                 moisture = s3.number_input("Rutubet (%)", 0.0, 20.0, 5.0)
                 
                 calc_pressed = st.form_submit_button("🔄 Randıman Hesapla")
@@ -104,6 +103,14 @@ else:
 
                 st.markdown("---")
                 st.subheader("3. Finansal Bilgiler")
+                
+                # --- YENİ EKLENEN PAKETLEME KISMI ---
+                st.caption("Paketleme Detayları")
+                p1, p2 = st.columns(2)
+                pack_type = p1.selectbox("Paketleme Tipi", ["Naylon Çuval", "Jüt Çuval", "Bigbag", "Dökme"])
+                pack_count = p2.number_input("Paket Adedi", min_value=0, step=1)
+
+                st.caption("Ağırlık ve Fiyat")
                 f1, f2 = st.columns(2)
                 net_weight = f1.number_input("Toplam Net Ağırlık (kg)", min_value=0.0)
                 doc_num = f2.text_input("Müstahsil Makbuzu / Fatura No")
@@ -136,6 +143,11 @@ else:
                         "sample_weight": sample_w, "good_kernel": good_k, "shrivelled_kernel": shriv_k,
                         "calculated_randiman": randiman, "visible_rotten": vis_rot, "hidden_rotten": hid_rot,
                         "tumorous": tumor, "size_1_percent": size_1, "undersize_percent": under_size, "moisture": moisture,
+                        
+                        # NEW FIELDS
+                        "packaging_type": pack_type,
+                        "package_count": pack_count,
+
                         "qty_ordered": net_weight, "document_number": doc_num, "gross_price_50": gross_price,
                         "net_price_50": net_price_50, "actual_unit_price": unit_price, "total_value": total_val,
                         "payment_amount": pay_amount, "payment_method": pay_method, "remaining_balance": remaining
@@ -232,10 +244,8 @@ else:
                     loc_warehouse = st.text_input("Depo / Silo Konumu")
                     
                     if st.form_submit_button("Girişi Onayla"):
-                        # 1. Güncelle
                         supabase.table("purchases").update({"status": "Received"}).eq("id", selected_id).execute()
                         
-                        # 2. Kabul Logu
                         intake_payload = {
                             "po_id": int(selected_id), "plate_number": plate, "waybill_no": waybill,
                             "received_qty": received_qty, "variance": received_qty - float(selected_row['qty_ordered'] or 0),
@@ -243,7 +253,6 @@ else:
                         }
                         insert_record("intake_log", intake_payload)
                         
-                        # 3. STOK GÜNCELLE
                         stock_payload = {
                             "item_name": selected_row['item_type'],
                             "category": selected_row.get('category', 'Unknown'),
@@ -311,8 +320,6 @@ else:
                 
                 with st.form("modify_form"):
                     st.info(f"Düzenleniyor: {target_name}")
-                    
-                    # Edit Fields
                     c_new_name = st.text_input("İsim", value=target_row['item_name'])
                     c_mat = st.text_input("Materyal", value=target_row.get('mat_type') or "")
                     c_use = st.text_input("Kullanım", value=target_row.get('use_case') or "")
@@ -350,12 +357,10 @@ else:
     elif module == "4. Stok Takibi":
         st.title("📦 Canlı Stok Durumu")
         
-        # 1. Hareketleri Çek
         moves = supabase.table("stock_movements").select("*").execute().data
         df_moves = pd.DataFrame(moves)
         
         if not df_moves.empty:
-            # 2. Stoğu Hesapla
             inventory_summary = df_moves.groupby('item_name')['quantity'].sum().reset_index()
             inventory_summary.columns = ['Malzeme / Ürün', 'Mevcut Stok']
             
