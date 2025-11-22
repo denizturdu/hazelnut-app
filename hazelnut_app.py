@@ -8,7 +8,6 @@ st.set_page_config(page_title="Hazelnut Factory Manager", layout="wide")
 # --- HELPER: RANDIMAN CALCULATOR ---
 def calculate_randiman(sample_weight, good_kernel, shrivelled_kernel):
     # Formula: ((Good Kernel + (Shrivelled / 2)) / Sample Weight) * 100
-    # We multiply by 100 to get a percentage (e.g. 50.0 instead of 0.5)
     if sample_weight == 0:
         return 0.0
     
@@ -72,9 +71,8 @@ else:
                 st.markdown("---")
                 st.subheader("2. Quality & Randıman")
                 
-                # UPDATED SECTION
                 q1, q2, q3, q4 = st.columns(4)
-                sample_w = q1.number_input("Sample Inshell Size in Grams", value=100.0) # Changed Label
+                sample_w = q1.number_input("Sample Inshell Size in Grams", value=100.0)
                 good_k = q2.number_input("Good Kernel (g)", value=0.0)
                 shriv_k = q3.number_input("Shrivelled Kernel (g)", value=0.0)
                 
@@ -127,3 +125,87 @@ else:
                         "net_price_50": net_price_50,
                         "actual_unit_price": unit_price,
                         "total_value": total_val,
+                        "created_by": st.session_state.user.email,
+                        "status": "Pending Arrival"
+                    }
+                    try:
+                        insert_record("purchases", payload)
+                        st.success("Contract Saved to Database!")
+                    except Exception as e:
+                        st.error(f"Error saving: {e}")
+
+        elif type_selector == "Materials/Goods":
+            with st.form("material_form"):
+                supplier = st.text_input("Supplier")
+                item_name = st.text_input("Item Name (e.g. Jute Bags)")
+                qty = st.number_input("Quantity", min_value=1.0)
+                if st.form_submit_button("Order Material"):
+                    payload = {
+                        "category": "Material",
+                        "supplier": supplier,
+                        "item_type": item_name,
+                        "qty_ordered": qty,
+                        "status": "Pending Arrival",
+                        "created_by": st.session_state.user.email
+                    }
+                    insert_record("purchases", payload)
+                    st.success("Material Order Placed!")
+
+    # ==========================
+    # MODULE 2: INTAKE
+    # ==========================
+    elif module == "2. Intake (Mal Kabul)":
+        st.title("Module 2: Factory Gate Intake")
+        
+        # Fetch Pending Items
+        try:
+            response = supabase.table("purchases").select("*").eq("status", "Pending Arrival").execute()
+            pending_df = pd.DataFrame(response.data)
+            
+            if not pending_df.empty:
+                st.subheader("Expected Arrivals")
+                # Show key columns
+                st.dataframe(pending_df[["id", "supplier", "item_type", "qty_ordered", "location"]])
+                
+                st.markdown("---")
+                st.subheader("Process Arrival")
+                
+                po_ids = pending_df['id'].tolist()
+                selected_id = st.selectbox("Select Purchase ID", po_ids)
+                
+                # Get the selected row data
+                selected_row = pending_df[pending_df['id'] == selected_id].iloc[0]
+                
+                st.info(f"Receiving: {selected_row['item_type']} from {selected_row['supplier']}")
+                
+                with st.form("intake_confirm"):
+                    c1, c2 = st.columns(2)
+                    plate = c1.text_input("Plate Number")
+                    waybill = c2.text_input("Waybill No")
+                    
+                    received_qty = st.number_input("Actual Received Quantity (kg/count)", value=float(selected_row['qty_ordered']))
+                    loc_warehouse = st.text_input("Warehouse Location (e.g. Silo 1)")
+                    
+                    if st.form_submit_button("Confirm Arrival"):
+                        # 1. Update Purchase Status
+                        supabase.table("purchases").update({"status": "Received"}).eq("id", selected_id).execute()
+                        
+                        # 2. Insert into Intake Log
+                        intake_payload = {
+                            "po_id": int(selected_id),
+                            "plate_number": plate,
+                            "waybill_no": waybill,
+                            "received_qty": received_qty,
+                            "variance": received_qty - float(selected_row['qty_ordered']),
+                            "location_in_warehouse": loc_warehouse,
+                            "created_by": st.session_state.user.email
+                        }
+                        insert_record("intake_log", intake_payload)
+                        st.success("Arrival Confirmed! Inventory Updated.")
+                        time.sleep(1)
+                        st.rerun()
+            else:
+                st.info("No pending shipments found.")
+                
+        except Exception as e:
+            st.error(f"Error loading data: {e}")
