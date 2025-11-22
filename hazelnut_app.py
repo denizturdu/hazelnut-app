@@ -7,7 +7,7 @@ st.set_page_config(page_title="Fındık Fabrikası Yönetimi", layout="wide")
 
 # --- YARDIMCI: RANDIMAN HESAPLAYICI ---
 def calculate_randiman(sample_weight, good_kernel, shrivelled_kernel):
-    # Formül: ((Sağlam İç + (Buruk / 2)) / Numune Ağırlığı) * 100
+    # Formül: ((Sağlam İç + (Buruşuk / 2)) / Numune Ağırlığı) * 100
     if sample_weight == 0:
         return 0.0
     try:
@@ -85,7 +85,8 @@ else:
                 q1, q2, q3 = st.columns(3)
                 sample_w = q1.number_input("Numune Ağırlığı (g)", value=250.0)
                 good_k = q2.number_input("Sağlam İç (g)", value=0.0)
-                shriv_k = q3.number_input("Buruk İç (g)", value=0.0)
+                # İSİM BURUŞUK OLARAK GÜNCELLENDİ
+                shriv_k = q3.number_input("Buruşuk İç (g)", value=0.0)
                 
                 d1, d2, d3 = st.columns(3)
                 vis_rot = d1.number_input("Görünen Çürük (g)", value=0.0)
@@ -104,10 +105,8 @@ else:
                 st.markdown("---")
                 st.subheader("3. Finansal Bilgiler")
                 
-                # --- GÜNCELLENEN PAKETLEME KISMI (ÇOKLU SEÇİM) ---
                 st.caption("Paketleme Detayları (Adet Giriniz)")
                 p1, p2, p3 = st.columns(3)
-                # Kullanıcı hepsine ayrı ayrı sayı girebilir
                 cnt_nylon = p1.number_input("Naylon Çuval Adedi", min_value=0, step=1)
                 cnt_jute = p2.number_input("Jüt Çuval Adedi", min_value=0, step=1)
                 cnt_bigbag = p3.number_input("Big Bag Adedi", min_value=0, step=1)
@@ -146,7 +145,6 @@ else:
                         "calculated_randiman": randiman, "visible_rotten": vis_rot, "hidden_rotten": hid_rot,
                         "tumorous": tumor, "size_1_percent": size_1, "undersize_percent": under_size, "moisture": moisture,
                         
-                        # NEW FIELDS (Specific Counts)
                         "count_nylon": cnt_nylon,
                         "count_jute": cnt_jute,
                         "count_bigbag": cnt_bigbag,
