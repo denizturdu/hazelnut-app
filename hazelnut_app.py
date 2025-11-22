@@ -21,6 +21,14 @@ def calculate_percentages(base_w, inputs):
         results[k] = (v / base_w) * 100
     return results
 
+def calculate_detailed_rates(base_weight, inputs):
+    results = {}
+    if base_weight == 0: return {k: 0.0 for k in inputs}
+    for key, val in inputs.items():
+        if "adet" in key or "tane" in key: results[key] = val 
+        else: results[key] = (val / base_weight) * 100
+    return results
+
 # --- LISTS ---
 CALIBRE_OPTIONS = [
     "Mixed Size", "21mm+", "20mm+", "19mm+", "18mm+", "17mm+", "16mm+", 
@@ -96,7 +104,7 @@ else:
                 
                 st.markdown("---")
                 
-                # ORTAK DEĞİŞKENLER BAŞLATMA
+                # ORTAK DEĞİŞKENLERİ SIFIRLA
                 w_sample=0.0; w_good=0.0; w_shriv=0.0; w_vis_rot=0.0; w_hid_rot=0.0; w_tumor=0.0
                 w_under=0.0; w_over=0.0; val_moist=0.0; w_vis_mold=0.0; w_hid_mold=0.0; w_vis_tumor=0.0
                 w_hid_tumor=0.0; w_worm=0.0; w_lemon=0.0; w_decayed=0.0; w_broken=0.0; w_twin=0.0
@@ -115,22 +123,13 @@ else:
                         st.markdown("**Fiziksel Analiz (Eksper)**")
                         w_sample = st.number_input("Kabuklu Numune Ağırlığı (g)", value=250.0)
                         
-                        def show_percent(val, base):
-                            if base > 0: return f"%{(val/base)*100:.2f}"
-                            return "%0.00"
-
+                        # Inputs
                         w_good = st.number_input("Sağlam İç (g)", 0.0)
                         w_shriv = st.number_input("Buruşuk İç (g)", 0.0)
                         w_vis_rot = st.number_input("Görünen Çürük (g)", 0.0)
                         w_hid_rot = st.number_input("Gizli Çürük (g)", 0.0)
                         w_tumor = st.number_input("Ur (g)", 0.0)
                         
-                        # Anlık oranlar
-                        temp_total_inner = w_good + w_shriv + w_vis_rot + w_hid_rot + w_tumor
-                        base_calc = temp_total_inner if temp_total_inner > 0 else 1
-                        if temp_total_inner > 0:
-                            st.caption(f"📊 Anlık Oranlar (İç Toplama Göre): Buruşuk: {show_percent(w_shriv, base_calc)} | G.Çürük: {show_percent(w_vis_rot, base_calc)} | G.Çürük: {show_percent(w_hid_rot, base_calc)} | Ur: {show_percent(w_tumor, base_calc)}")
-
                         s1, s2 = st.columns(2)
                         w_over = s1.number_input("1. Numara İç - 13 mm üzeri (g)", 0.0)
                         w_under = s2.number_input("Elek Altı İç - 9 mm altı (g)", 0.0)
@@ -155,7 +154,12 @@ else:
                     calc_pressed = st.form_submit_button("🔄 Randıman ve Fiyat Hesapla")
                     
                     val_randiman = calculate_randiman(w_sample, w_good, w_shriv)
-                    pcts = calculate_percentages(base_calc, {
+                    
+                    # Toplam İç (Payda)
+                    total_inner = w_good + w_shriv + w_vis_rot + w_hid_rot + w_tumor
+                    base_w = total_inner if total_inner > 0 else 1
+                    
+                    pcts = calculate_percentages(base_w, {
                         "Buruşuk": w_shriv, "Ur": w_tumor, 
                         "G. Çürük": w_vis_rot, "Gizli Çürük": w_hid_rot,
                         "13mm+": w_over, "Elek Altı": w_under
@@ -165,7 +169,7 @@ else:
                     unit_price = net_price_50 * (val_randiman / 50.0)
                     total_val = unit_price * net_weight
 
-                    if calc_pressed or True:
+                    if calc_pressed:
                         st.markdown("##### Analiz Sonuçları")
                         k1, k2, k3 = st.columns(3)
                         k1.metric("Randıman", f"%{val_randiman:.2f}")
@@ -175,8 +179,8 @@ else:
                         k4, k5, k6, k7 = st.columns(4)
                         k4.metric("Buruşuk", f"%{pcts['Buruşuk']:.2f}")
                         k5.metric("Urlu", f"%{pcts['Ur']:.2f}")
-                        k6.metric("G. Çürük", f"%{pcts.get('G. Çürük', 0):.2f}")
-                        k7.metric("Gizli Çürük", f"%{pcts.get('Gizli Çürük', 0):.2f}")
+                        k6.metric("G. Çürük", f"%{pcts['G. Çürük']:.2f}")
+                        k7.metric("Gizli Çürük", f"%{pcts['Gizli Çürük']:.2f}")
                         
                         if reg_type != "Emanet":
                             st.success(f"💰 **TOPLAM TUTAR:** {total_val:,.2f} TL")
@@ -197,11 +201,6 @@ else:
                     k4, k5 = st.columns(2)
                     l_ffa = k4.number_input("FFA (%)", 0.0, 100.0, 0.0)
                     l_perox = k5.number_input("Peroksit (meqO2/kg)", 0.0)
-
-                    # Dynamic Percent Helper
-                    def dp(val):
-                        if w_sample > 0: return f"%{(val/w_sample)*100:.2f}"
-                        return "%0.00"
 
                     st.markdown("##### B. Fiziksel Kusurlar (Gram)")
                     
@@ -245,45 +244,43 @@ else:
                     l_b1 = m_row2_3.number_input("Aflatoksin B1 (ppb)", 0.0)
                     l_tot = m_row2_4.number_input("Aflatoksin Total (ppb)", 0.0)
 
-                    # --- REPORT SECTION (TABLO HALİNDE) ---
+                    # --- REPORT SECTION (BUTTON CONTROLLED) ---
                     st.markdown("---")
-                    st.info("📊 **Canlı Analiz Raporu**")
+                    calc_btn = st.form_submit_button("📊 Rapor Oluştur")
                     
-                    # Calculate Percentages
-                    calc_inputs = {
-                        "Sağlam İç": w_good, "G.Çürük": w_vis_rot, "G.Çürük": w_hid_rot, 
-                        "G.Küflü": w_vis_mold, "G.Küflü": w_hid_mold,
-                        "G.Urlu": w_vis_tumor, "G.Urlu": w_hid_tumor,
-                        "Kurt Yenikli": w_worm, "Buruşuk": w_shriv, "Limoni": w_lemon,
-                        "Vurgun": w_decayed, "Kırık": w_broken, "İkiz": w_twin, 
-                        "Diğer": w_other, "Elek Altı": w_under, "Elek Üstü": w_over, "Kabuk": w_shell
-                    }
-                    
-                    report_data = []
-                    if w_sample > 0:
-                        # 1. Add Physical Defects
-                        for k, v in calc_inputs.items():
-                            pct = (v / w_sample) * 100
-                            # Show items that have values, or always show important ones?
-                            # Showing all to be complete
-                            if v > 0:
-                                report_data.append({"Parametre": k, "Girdi (g)": f"{v} g", "Sonuç": f"%{pct:.2f}"})
+                    if calc_btn:
+                        st.info("📊 **Canlı Analiz Raporu**")
                         
-                        # 2. Add Chemical / Microbio (Using entered values)
-                        if val_moist > 0: report_data.append({"Parametre": "Nem", "Girdi (g)": "-", "Sonuç": f"%{val_moist}"})
-                        if l_ffa > 0: report_data.append({"Parametre": "FFA", "Girdi (g)": "-", "Sonuç": f"%{l_ffa}"})
-                        if l_perox > 0: report_data.append({"Parametre": "Peroksit", "Girdi (g)": "-", "Sonuç": f"{l_perox} meq"})
+                        calc_inputs = {
+                            "Sağlam İç": w_good, "G.Çürük": w_vis_rot, "G.Çürük": w_hid_rot, 
+                            "G.Küflü": w_vis_mold, "G.Küflü": w_hid_mold,
+                            "G.Urlu": w_vis_tumor, "G.Urlu": w_hid_tumor,
+                            "Kurt Yenikli": w_worm, "Buruşuk": w_shriv, "Limoni": w_lemon,
+                            "Vurgun": w_decayed, "Kırık": w_broken, "İkiz": w_twin, 
+                            "Diğer": w_other, "Elek Altı": w_under, "Elek Üstü": w_over, "Kabuk": w_shell
+                        }
                         
-                        if l_b1 > 0: report_data.append({"Parametre": "Aflatoksin B1", "Girdi (g)": "-", "Sonuç": f"{l_b1} ppb"})
-                        if l_tot > 0: report_data.append({"Parametre": "Aflatoksin Total", "Girdi (g)": "-", "Sonuç": f"{l_tot} ppb"})
+                        report_data = []
+                        if w_sample > 0:
+                            # Physical
+                            for k, v in calc_inputs.items():
+                                pct = (v / w_sample) * 100
+                                if v > 0:
+                                    report_data.append({"Parametre": k, "Girdi (g)": f"{v} g", "Sonuç": f"%{pct:.2f}"})
+                            
+                            # Chemical
+                            if val_moist > 0: report_data.append({"Parametre": "Nem", "Girdi (g)": "-", "Sonuç": f"%{val_moist}"})
+                            if l_ffa > 0: report_data.append({"Parametre": "FFA", "Girdi (g)": "-", "Sonuç": f"%{l_ffa}"})
+                            if l_perox > 0: report_data.append({"Parametre": "Peroksit", "Girdi (g)": "-", "Sonuç": f"{l_perox} meq"})
+                            if l_b1 > 0: report_data.append({"Parametre": "Aflatoksin B1", "Girdi (g)": "-", "Sonuç": f"{l_b1} ppb"})
+                            if l_tot > 0: report_data.append({"Parametre": "Aflatoksin Total", "Girdi (g)": "-", "Sonuç": f"{l_tot} ppb"})
+                            if l_salm: report_data.append({"Parametre": "Salmonella", "Girdi (g)": "-", "Sonuç": l_salm})
+                            if l_ecoli: report_data.append({"Parametre": "E. Coli", "Girdi (g)": "-", "Sonuç": l_ecoli})
                         
-                        if l_salm: report_data.append({"Parametre": "Salmonella", "Girdi (g)": "-", "Sonuç": l_salm})
-                        if l_ecoli: report_data.append({"Parametre": "E. Coli", "Girdi (g)": "-", "Sonuç": l_ecoli})
-                    
-                    if report_data:
-                        st.dataframe(pd.DataFrame(report_data), use_container_width=True)
-                    else:
-                        st.caption("Sonuçları görmek için yukarıya değer giriniz.")
+                        if report_data:
+                            st.dataframe(pd.DataFrame(report_data), use_container_width=True)
+                        else:
+                            st.warning("Rapor oluşturmak için lütfen yukarıdaki gram değerlerini giriniz.")
 
                     # --- FİYATLANDIRMA ---
                     st.markdown("---")
@@ -330,33 +327,25 @@ else:
                         "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num,
                         "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount,
                         "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag,
-                        "moisture": moisture,
-                        "good_kernel": good_k, "visible_rotten": vis_rot, "hidden_rotten": hid_rot, 
-                        "shrivelled_kernel": shriv, "tumorous": tumor if 'tumor' in locals() else 0.0
+                        
+                        # UNIFIED COLUMNS
+                        "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv,
+                        "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, 
+                        "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over,
+                        "moisture": val_moist,
+                        
+                        # Specific Lab Columns
+                        "weight_visible_mold": w_vis_mold, "weight_hidden_mold": w_hid_mold,
+                        "weight_visible_tumor": w_vis_tumor, "weight_hidden_tumor": w_hid_tumor,
+                        "weight_worm_eaten": w_worm, "weight_lemon": w_lemon, "weight_decayed": w_decayed,
+                        "weight_broken": w_broken, "weight_twin": w_twin, "weight_other": w_other, 
+                        "weight_shell": w_shell, "count_membrane": c_membrane, "count_foreign": c_foreign,
+                        "lab_ffa": l_ffa, "lab_peroxide": l_perox, "lab_calibre": lab_cal,
+                        "lab_salmonella": l_salm, "lab_ecoli": l_ecoli, "lab_afla_b1": l_b1, "lab_afla_total": l_tot,
+                        
+                        # Calculated (For Kabuklu)
+                        "calculated_randiman": val_randiman
                     }
-
-                    if hazelnut_cat == "Kabuklu Fındık":
-                        payload.update({
-                            "sample_weight": sample_w, "calculated_randiman": randiman,
-                            "gross_price_50": gross_price, "net_price_50": net_price_50, "actual_unit_price": unit_price,
-                            "size_1_percent": size_1_g, "undersize_percent": undersize_g
-                        })
-                    else:
-                        payload.update({
-                            "actual_unit_price": price_net_deducted,
-                            "gross_price_50": price_gross,
-                            "analysis_inner_weight": w_sample, "analysis_calibre": lab_cal, 
-                            "analysis_ffa": l_ffa, "analysis_peroxide": l_perox,
-                            "analysis_visible_mold": w_vis_mold, "analysis_hidden_mold": w_hid_mold,
-                            "analysis_visible_tumor": w_vis_tumor, "analysis_hidden_tumor": w_hid_tumor,
-                            "analysis_worm_eaten": w_worm, "analysis_lemon": w_lemon, "analysis_decayed": w_decayed,
-                            "analysis_broken": w_broken, "analysis_twin": w_twin, "analysis_other_types": w_other,
-                            "analysis_oversize": w_over, "analysis_undersize": w_under,
-                            "analysis_shell": w_shell, 
-                            "analysis_membrane_adhered": c_membrane, "analysis_foreign_matter": c_foreign,
-                            "analysis_salmonella": l_salm, "analysis_ecoli": l_ecoli,
-                            "analysis_afla_b1": l_b1, "analysis_afla_total": l_tot
-                        })
                     
                     try:
                         insert_record("purchases", payload)
