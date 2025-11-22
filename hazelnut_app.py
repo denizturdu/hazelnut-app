@@ -93,7 +93,7 @@ else:
                 st.markdown("---")
                 st.subheader("2. Kalite & Randıman")
                 q1, q2, q3 = st.columns(3)
-                sample_w = q1.number_input("Numune Ağırlığı (g)", value=250.0)
+                sample_w = q1.number_input("Kabuklu Numune Ağırlığı (g)", value=250.0)
                 good_k = q2.number_input("Sağlam İç (g)", value=0.0)
                 shriv_k = q3.number_input("Buruşuk İç (g)", value=0.0)
                 
