@@ -45,7 +45,7 @@ else:
         st.session_state.user = None
         st.rerun()
         
-    menu_options = ["1. Satın Alma", "2. Mal Kabul (Kantar)", "3. Yönetici Ayarları", "4. Stok Takibi"]
+    menu_options = ["1. Satın Alma", "2. Fabrika Ürün Girişi", "3. Yönetici Ayarları", "4. Stok Takibi"]
     module = st.sidebar.radio("Menü", menu_options)
 
     # ==========================
@@ -207,7 +207,7 @@ else:
     # MODÜL 2: MAL KABUL (KANTAR)
     # ==========================
     elif module == "2. Mal Kabul (Kantar)":
-        st.title("Modül 2: Mal Kabul (Kantar Girişi)")
+        st.title("2. Fabrika Ürün Girişi")
         try:
             response = supabase.table("purchases").select("*").eq("status", "Pending Arrival").execute()
             pending_df = pd.DataFrame(response.data)
