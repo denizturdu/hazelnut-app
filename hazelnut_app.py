@@ -63,7 +63,7 @@ else:
         # --- A. FINDIK ALIMI ---
         if type_selector in hazelnut_group:
             with st.form("hazelnut_form"):
-                st.subheader("1. Müstahsil & Kaynak")
+                st.subheader("1. Müstahsil & Tedarikçi")
                 c1, c2, c3 = st.columns(3)
                 supplier = c1.text_input("Tedarikçi Adı")
                 sup_type = c2.selectbox("Tedarikçi Tipi", ["Müstahsil", "Tüccar", "Şirket"])
