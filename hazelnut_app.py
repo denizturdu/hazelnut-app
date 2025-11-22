@@ -471,3 +471,33 @@ if st.form_submit_button("Confirm Arrival"):
                     st.rerun()
             else:
                 d2.info("No items found.")
+
+
+# ==========================
+    # MODULE 4: INVENTORY
+    # ==========================
+    elif module == "4. Inventory":
+        st.title("📦 Live Inventory")
+        
+        # 1. Get all movements
+        moves = supabase.table("stock_movements").select("*").execute().data
+        df_moves = pd.DataFrame(moves)
+        
+        if not df_moves.empty:
+            # 2. Calculate Current Stock (Group by Item and Sum Quantity)
+            inventory_summary = df_moves.groupby('item_name')['quantity'].sum().reset_index()
+            inventory_summary.columns = ['Item Name', 'Current Stock']
+            
+            # 3. Show the Table
+            st.dataframe(inventory_summary, use_container_width=True)
+            
+            # 4. Audit Trail (Click to see history)
+            st.markdown("---")
+            st.subheader("Movement History")
+            selected_item = st.selectbox("Filter History by Item", df_moves['item_name'].unique())
+            
+            history_df = df_moves[df_moves['item_name'] == selected_item]
+            st.dataframe(history_df.sort_values(by='created_at', ascending=False))
+            
+        else:
+            st.info("No inventory movements yet.")
