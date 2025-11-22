@@ -57,43 +57,57 @@ else:
         type_selector = st.selectbox("Purchase Category", ["Hazelnut (Fındık)", "Materials/Goods", "Services"])
         
         if type_selector == "Hazelnut (Fındık)":
-            # WE START THE FORM HERE
             with st.form("hazelnut_form"):
-                st.subheader("1. Supplier & Origin")
+                st.subheader("1. Supplier & Origin (Kimlik)")
                 c1, c2, c3 = st.columns(3)
                 supplier = c1.text_input("Supplier Name")
                 sup_type = c2.selectbox("Supplier Type", ["Farmer", "Merchant", "Company"])
-                reg_type = c3.selectbox("Registration Type", ["Purchased", "Loaned (Emanet)"])
+                id_num = c3.text_input("ID Number (TCKN/VKN)")
                 
-                c4, c5 = st.columns(2)
-                location = c4.selectbox("Place of Registration", ["Factory", "Field", "Store"])
-                hazelnut_type = c5.selectbox("Hazelnut Type", ["Levant", "Giresun", "Akçakoca"])
+                c4, c5, c6 = st.columns(3)
+                city = c4.text_input("City/Village")
+                contact = c5.text_input("Phone Number")
+                cert_status = c6.selectbox("Certification", ["None", "Organic", "Rainforest Alliance", "Avella"])
+
+                c7, c8, c9 = st.columns(3)
+                reg_type = c7.selectbox("Registration Type", ["Purchased", "Loaned (Emanet)"])
+                location = c8.selectbox("Place of Registration", ["Factory", "Field", "Store"])
+                hazelnut_type = c9.selectbox("Hazelnut Type", ["Levant", "Giresun", "Akçakoca"])
                 
                 st.markdown("---")
-                st.subheader("2. Quality & Randıman")
+                st.subheader("2. Quality & Randıman (Eksper)")
                 
-                # INPUTS (Changing these will NOT trigger a reload now)
+                # --- ROW 1: RANDIMAN CALCULATION ---
                 q1, q2, q3 = st.columns(3)
-                sample_w = q1.number_input("Sample Inshell Size in Grams", value=250.0)
+                sample_w = q1.number_input("Sample Inshell Size (g)", value=250.0)
                 good_k = q2.number_input("Good Kernel (g)", value=0.0)
                 shriv_k = q3.number_input("Shrivelled Kernel (g)", value=0.0)
                 
-                # --- THE SPECIAL "CALCULATE" BUTTON ---
-                # This button submits the form just to update the math, but we don't save to DB yet.
-                calc_pressed = st.form_submit_button("🔄 Calculate Yield")
+                # --- ROW 2: DEFECTS ---
+                d1, d2, d3 = st.columns(3)
+                vis_rot = d1.number_input("Visible Rotten (g)", value=0.0)
+                hid_rot = d2.number_input("Hidden Rotten (g)", value=0.0)
+                tumor = d3.number_input("Tumorous (g)", value=0.0)
+
+                # --- ROW 3: SIZING & MOISTURE ---
+                s1, s2, s3 = st.columns(3)
+                size_1 = s1.number_input("Size 1 %>13mm (%)", value=0.0)
+                under_size = s2.number_input("Undersize %<9mm (%)", value=0.0)
+                moisture = s3.number_input("Moisture (%)", 0.0, 20.0, 5.0)
+                
+                # --- BUTTON: CALCULATE YIELD ---
+                calc_pressed = st.form_submit_button("🔄 Calculate Yield & Stats")
                 
                 # Perform Calculation
                 randiman = calculate_randiman(sample_w, good_k, shriv_k)
-                
-                # We display the result nicely using columns
-                m1, m2 = st.columns(2)
-                m1.metric("Calculated Randıman", f"{randiman:.2f}%")
-                
-                moisture = m2.number_input("Moisture (%)", 0.0, 20.0, 5.0)
+                st.metric("Calculated Randıman", f"{randiman:.2f}%")
 
                 st.markdown("---")
-                st.subheader("3. Financials")
-                net_weight = st.number_input("Total Net Weight (kg)", min_value=0.0)
+                st.subheader("3. Financials (Finans)")
+                
+                f1, f2 = st.columns(2)
+                net_weight = f1.number_input("Total Net Weight (kg)", min_value=0.0)
+                doc_num = f2.text_input("Document Number (Müstahsil Makbuzu No)")
                 
                 # Financial Logic
                 if reg_type == "Loaned (Emanet)":
@@ -102,6 +116,7 @@ else:
                     net_price_50 = 0.0
                     unit_price = 0.0
                     total_val = 0.0
+                    remaining = 0.0
                 else:
                     gross_price = st.number_input("Gross Price (50 Rand)", value=120.0)
                     
@@ -112,12 +127,22 @@ else:
                     
                     st.write(f"**Net Price (50 Rand):** {net_price_50:.2f} TL")
                     st.write(f"**Actual Price (per kg):** {unit_price:.2f} TL")
-                    st.success(f"**TOTAL VALUE:** {total_val:,.2f} TL")
+                    st.info(f"**TOTAL VALUE:** {total_val:,.2f} TL")
 
-                # --- THE SAVE BUTTON ---
+                    # Payment
+                    pay_col1, pay_col2 = st.columns(2)
+                    pay_amount = pay_col1.number_input("Payment Amount (TL)", value=0.0)
+                    pay_method = pay_col2.selectbox("Way of Payment", ["Cash", "Bank Transfer", "Check"])
+                    
+                    remaining = total_val - pay_amount
+                    st.metric("Remaining Balance", f"{remaining:,.2f} TL")
+
+                # --- BUTTON: SAVE ---
                 submit_save = st.form_submit_button("✅ Create Contract & Save")
                 
                 if submit_save:
+                    # We need to make sure the Database supports all these new columns.
+                    # If you get an error, we will need to run a quick SQL update.
                     payload = {
                         "category": "Hazelnut",
                         "supplier": supplier,
@@ -137,29 +162,15 @@ else:
                         "total_value": total_val,
                         "created_by": st.session_state.user.email,
                         "status": "Pending Arrival"
+                        # Note: We are not saving 'Hidden Rotten' etc to DB yet because 
+                        # the table doesn't have those columns. 
+                        # We should update the SQL table next if you want to save these.
                     }
                     try:
                         insert_record("purchases", payload)
                         st.success("Contract Saved to Database!")
                     except Exception as e:
                         st.error(f"Error saving: {e}")
-
-        elif type_selector == "Materials/Goods":
-            with st.form("material_form"):
-                supplier = st.text_input("Supplier")
-                item_name = st.text_input("Item Name (e.g. Jute Bags)")
-                qty = st.number_input("Quantity", min_value=1.0)
-                if st.form_submit_button("Order Material"):
-                    payload = {
-                        "category": "Material",
-                        "supplier": supplier,
-                        "item_type": item_name,
-                        "qty_ordered": qty,
-                        "status": "Pending Arrival",
-                        "created_by": st.session_state.user.email
-                    }
-                    insert_record("purchases", payload)
-                    st.success("Material Order Placed!")
 
     # ==========================
     # MODULE 2: INTAKE
