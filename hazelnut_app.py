@@ -65,7 +65,7 @@ else:
             with st.form("hazelnut_form"):
                 st.subheader("1. Müstahsil & Tedarikçi")
                 c1, c2, c3 = st.columns(3)
-                supplier = c1.text_input("Tedarikçi Adı")
+                supplier = c1.text_input("Tedarikçi İsmi")
                 sup_type = c2.selectbox("Tedarikçi Tipi", ["Müstahsil", "Tüccar", "Şirket"])
                 id_num = c3.text_input("TCKN / VKN")
                 
