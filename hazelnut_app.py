@@ -54,51 +54,71 @@ else:
     if module == "1. Purchase (Satın Alma)":
         st.title("Module 1: Purchasing Hub")
         
-        type_selector = st.selectbox("Purchase Category", ["Hazelnut (Fındık)", "Materials/Goods", "Services"])
+        # 1. DEFINE THE NEW CATEGORIES
+        hazelnut_group = [
+            "Inshell Hazelnuts (Kabuklu Findik)", 
+            "Hazelnut Kernels (Ic Findik)", 
+            "Processed Hazelnuts (Islenmis Findik)"
+        ]
         
-        if type_selector == "Hazelnut (Fındık)":
+        general_group = [
+            "Materials", 
+            "Machines", 
+            "Services"
+        ]
+        
+        # Combine them for the dropdown
+        all_options = hazelnut_group + general_group
+        
+        type_selector = st.selectbox("Purchase Category", all_options)
+        
+        # --- LOGIC FOR HAZELNUT GROUP (Detailed Form) ---
+        if type_selector in hazelnut_group:
             with st.form("hazelnut_form"):
                 st.subheader("1. Supplier & Origin (Kimlik)")
                 c1, c2, c3 = st.columns(3)
                 supplier = c1.text_input("Supplier Name")
-                sup_type = c2.selectbox("Supplier Type", ["Farmer", "Merchant", "Factory"])
+                sup_type = c2.selectbox("Supplier Type", ["Farmer", "Merchant", "Company"])
                 id_num = c3.text_input("ID Number (TCKN/VKN)")
                 
                 c4, c5, c6 = st.columns(3)
                 city = c4.text_input("City/Village")
                 contact = c5.text_input("Phone Number")
-                cert_status = c6.selectbox("Certification", ["None", "Organic", "Rainforest Alliance", "Avella", "Tekfindik"])
+                cert_status = c6.selectbox("Certification", ["None", "Organic", "Rainforest Alliance", "Avella"])
 
                 c7, c8, c9 = st.columns(3)
                 reg_type = c7.selectbox("Registration Type", ["Purchased", "Loaned (Emanet)"])
                 location = c8.selectbox("Place of Registration", ["Factory", "Field", "Store"])
-                hazelnut_type = c9.selectbox("Hazelnut Type", [ "Karışık","Giresun Tombul","Çakıldak","Kara","Sivri","Palaz","Badem","Foşa","Yomra"])
+                
+                # UPDATED HAZELNUT TYPES LIST
+                hazelnut_type = c9.selectbox("Hazelnut Variety", [
+                    "Karışık", "Giresun Tombul", "Çakıldak", "Kara", 
+                    "Sivri", "Palaz", "Badem", "Foşa", "Yomra"
+                ])
                 
                 st.markdown("---")
                 st.subheader("2. Quality & Randıman (Eksper)")
                 
-                # --- ROW 1: RANDIMAN CALCULATION ---
+                # ROW 1: RANDIMAN
                 q1, q2, q3 = st.columns(3)
                 sample_w = q1.number_input("Sample Inshell Size (g)", value=250.0)
                 good_k = q2.number_input("Good Kernel (g)", value=0.0)
                 shriv_k = q3.number_input("Shrivelled Kernel (g)", value=0.0)
                 
-                # --- ROW 2: DEFECTS ---
+                # ROW 2: DEFECTS
                 d1, d2, d3 = st.columns(3)
                 vis_rot = d1.number_input("Visible Rotten (g)", value=0.0)
                 hid_rot = d2.number_input("Hidden Rotten (g)", value=0.0)
                 tumor = d3.number_input("Tumorous (g)", value=0.0)
 
-                # --- ROW 3: SIZING & MOISTURE ---
+                # ROW 3: SIZING
                 s1, s2, s3 = st.columns(3)
                 size_1 = s1.number_input("Size 1 %>13mm (%)", value=0.0)
                 under_size = s2.number_input("Undersize %<9mm (%)", value=0.0)
                 moisture = s3.number_input("Moisture (%)", 0.0, 20.0, 5.0)
                 
-                # --- BUTTON: CALCULATE YIELD ---
+                # CALCULATE BUTTON
                 calc_pressed = st.form_submit_button("🔄 Calculate Yield & Stats")
-                
-                # Perform Calculation
                 randiman = calculate_randiman(sample_w, good_k, shriv_k)
                 st.metric("Calculated Randıman", f"{randiman:.2f}%")
 
@@ -137,17 +157,15 @@ else:
                     remaining = total_val - pay_amount
                     st.metric("Remaining Balance", f"{remaining:,.2f} TL")
 
-               # --- BUTTON: SAVE ---
+                # SAVE BUTTON
                 submit_save = st.form_submit_button("✅ Create Contract & Save")
                 
                 if submit_save:
-                    # Now we map EVERY input to the database columns we just created
                     payload = {
                         "created_by": st.session_state.user.email,
                         "status": "Pending Arrival",
-                        
-                        # Section 1
-                        "category": "Hazelnut",
+                        # We use the selector value (e.g. "Hazelnut Kernels") as the Category
+                        "category": type_selector, 
                         "supplier": supplier,
                         "supplier_type": sup_type,
                         "id_number": id_num,
@@ -157,8 +175,6 @@ else:
                         "reg_type": reg_type,
                         "location": location,
                         "item_type": hazelnut_type,
-
-                        # Section 2
                         "sample_weight": sample_w,
                         "good_kernel": good_k,
                         "shrivelled_kernel": shriv_k,
@@ -169,8 +185,6 @@ else:
                         "size_1_percent": size_1,
                         "undersize_percent": under_size,
                         "moisture": moisture,
-
-                        # Section 3
                         "qty_ordered": net_weight,
                         "document_number": doc_num,
                         "gross_price_50": gross_price,
@@ -183,10 +197,39 @@ else:
                     }
                     try:
                         insert_record("purchases", payload)
-                        st.success("Contract Saved Successfully! All data recorded.")
+                        st.success("Contract Saved Successfully!")
                     except Exception as e:
                         st.error(f"Error saving: {e}")
 
+        # --- LOGIC FOR GENERAL GROUP (Materials, Machines, Services) ---
+        else:
+            st.subheader(f"Purchase Order: {type_selector}")
+            with st.form("general_form"):
+                c1, c2 = st.columns(2)
+                supplier = c1.text_input("Supplier / Provider")
+                item_desc = c2.text_input("Description / Item Name")
+                
+                c3, c4 = st.columns(2)
+                qty = c3.number_input("Quantity", min_value=1.0, value=1.0)
+                price = c4.number_input("Total Estimated Cost (TL)", min_value=0.0)
+                
+                submit_general = st.form_submit_button(f"✅ Create {type_selector} Order")
+                
+                if submit_general:
+                    payload = {
+                        "category": type_selector, # Will be 'Materials', 'Machines', or 'Services'
+                        "supplier": supplier,
+                        "item_type": item_desc,
+                        "qty_ordered": qty,
+                        "total_value": price,
+                        "status": "Pending Arrival",
+                        "created_by": st.session_state.user.email
+                    }
+                    try:
+                        insert_record("purchases", payload)
+                        st.success(f"{type_selector} Order Saved!")
+                    except Exception as e:
+                        st.error(f"Error saving: {e}")
     # ==========================
     # MODULE 2: INTAKE
     # ==========================
