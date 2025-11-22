@@ -137,38 +137,53 @@ else:
                     remaining = total_val - pay_amount
                     st.metric("Remaining Balance", f"{remaining:,.2f} TL")
 
-                # --- BUTTON: SAVE ---
+               # --- BUTTON: SAVE ---
                 submit_save = st.form_submit_button("✅ Create Contract & Save")
                 
                 if submit_save:
-                    # We need to make sure the Database supports all these new columns.
-                    # If you get an error, we will need to run a quick SQL update.
+                    # Now we map EVERY input to the database columns we just created
                     payload = {
+                        "created_by": st.session_state.user.email,
+                        "status": "Pending Arrival",
+                        
+                        # Section 1
                         "category": "Hazelnut",
                         "supplier": supplier,
                         "supplier_type": sup_type,
+                        "id_number": id_num,
+                        "city": city,
+                        "phone_number": contact,
+                        "cert_status": cert_status,
                         "reg_type": reg_type,
                         "location": location,
                         "item_type": hazelnut_type,
+
+                        # Section 2
                         "sample_weight": sample_w,
                         "good_kernel": good_k,
                         "shrivelled_kernel": shriv_k,
                         "calculated_randiman": randiman,
+                        "visible_rotten": vis_rot,
+                        "hidden_rotten": hid_rot,
+                        "tumorous": tumor,
+                        "size_1_percent": size_1,
+                        "undersize_percent": under_size,
                         "moisture": moisture,
+
+                        # Section 3
                         "qty_ordered": net_weight,
+                        "document_number": doc_num,
                         "gross_price_50": gross_price,
                         "net_price_50": net_price_50,
                         "actual_unit_price": unit_price,
                         "total_value": total_val,
-                        "created_by": st.session_state.user.email,
-                        "status": "Pending Arrival"
-                        # Note: We are not saving 'Hidden Rotten' etc to DB yet because 
-                        # the table doesn't have those columns. 
-                        # We should update the SQL table next if you want to save these.
+                        "payment_amount": pay_amount,
+                        "payment_method": pay_method,
+                        "remaining_balance": remaining
                     }
                     try:
                         insert_record("purchases", payload)
-                        st.success("Contract Saved to Database!")
+                        st.success("Contract Saved Successfully! All data recorded.")
                     except Exception as e:
                         st.error(f"Error saving: {e}")
 
