@@ -94,8 +94,8 @@ else:
                 tumor = d3.number_input("Ur (g)", value=0.0)
 
                 s1, s2, s3 = st.columns(3)
-                size_1 = s1.number_input("Boy 1 %>13mm (%)", value=0.0)
-                under_size = s2.number_input("Elek Altı %<9mm (%)", value=0.0)
+                size_1 = s1.number_input("1 Numara (13mm üzeri) (%)", value=0.0)
+                under_size = s2.number_input("Elek Altı (9mm üzeri) (%)", value=0.0)
                 moisture = s3.number_input("Rutubet (%)", 0.0, 20.0, 5.0)
                 
                 calc_pressed = st.form_submit_button("🔄 Randıman Hesapla")
