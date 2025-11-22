@@ -3,11 +3,11 @@ import pandas as pd
 from db_utils import supabase, login_user, insert_record
 import time
 
-st.set_page_config(page_title="Hazelnut Factory Manager", layout="wide")
+st.set_page_config(page_title="Fındık Fabrikası Yönetimi", layout="wide")
 
-# --- HELPER: RANDIMAN CALCULATOR ---
+# --- YARDIMCI: RANDIMAN HESAPLAYICI ---
 def calculate_randiman(sample_weight, good_kernel, shrivelled_kernel):
-    # Formula: ((Good Kernel + (Shrivelled / 2)) / Sample Weight) * 100
+    # Formül: ((Sağlam İç + (Buruk / 2)) / Numune Ağırlığı) * 100
     if sample_weight == 0:
         return 0.0
     try:
@@ -17,114 +17,114 @@ def calculate_randiman(sample_weight, good_kernel, shrivelled_kernel):
     except:
         return 0.0
 
-# --- LOGIN SYSTEM ---
+# --- GİRİŞ SİSTEMİ ---
 if 'user' not in st.session_state:
     st.session_state.user = None
 
 def login_section():
-    st.title("🌰 Hazelnut Factory Login")
-    email = st.text_input("Email")
-    password = st.text_input("Password", type="password")
-    if st.button("Log In"):
+    st.title("🌰 Fındık Fabrikası Giriş")
+    email = st.text_input("E-posta")
+    password = st.text_input("Şifre", type="password")
+    if st.button("Giriş Yap"):
         user = login_user(email, password)
         if user:
             st.session_state.user = user
-            st.success("Login Successful!")
+            st.success("Giriş Başarılı!")
             time.sleep(0.5)
             st.rerun()
         else:
-            st.error("Login Failed. Check email/password.")
+            st.error("Giriş Başarısız. E-posta veya şifreyi kontrol edin.")
 
-# --- MAIN APP ---
+# --- ANA UYGULAMA ---
 if not st.session_state.user:
     login_section()
 else:
-    # Sidebar
-    st.sidebar.info(f"User: {st.session_state.user.email}")
-    if st.sidebar.button("Logout"):
+    # Kenar Çubuğu
+    st.sidebar.info(f"Kullanıcı: {st.session_state.user.email}")
+    if st.sidebar.button("Çıkış Yap"):
         st.session_state.user = None
         st.rerun()
         
-    menu_options = ["1. Purchase (Satın Alma)", "2. Intake (Mal Kabul)", "3. Admin Settings", "4. Inventory"]
-    module = st.sidebar.radio("Navigate", menu_options)
+    menu_options = ["1. Satın Alma", "2. Mal Kabul (Kantar)", "3. Yönetici Ayarları", "4. Stok Takibi"]
+    module = st.sidebar.radio("Menü", menu_options)
 
     # ==========================
-    # MODULE 1: PURCHASE
+    # MODÜL 1: SATIN ALMA
     # ==========================
-    if module == "1. Purchase (Satın Alma)":
-        st.title("Module 1: Purchasing Hub")
+    if module == "1. Satın Alma":
+        st.title("Modül 1: Satın Alma")
         
-        hazelnut_group = ["Inshell Hazelnuts (Kabuklu Findik)", "Hazelnut Kernels (Ic Findik)", "Processed Hazelnuts (Islenmis Findik)"]
-        general_group = ["Materials", "Machines", "Services"]
+        hazelnut_group = ["Kabuklu Fındık", "İç Fındık", "İşlenmiş Fındık"]
+        general_group = ["Malzeme", "Makine", "Hizmet"]
         all_options = hazelnut_group + general_group
         
-        type_selector = st.selectbox("Purchase Category", all_options)
+        type_selector = st.selectbox("Satın Alma Kategorisi", all_options)
         
-        # --- A. HAZELNUT LOGIC ---
+        # --- A. FINDIK ALIMI ---
         if type_selector in hazelnut_group:
             with st.form("hazelnut_form"):
-                st.subheader("1. Supplier & Origin")
+                st.subheader("1. Müstahsil & Kaynak")
                 c1, c2, c3 = st.columns(3)
-                supplier = c1.text_input("Supplier Name")
-                sup_type = c2.selectbox("Supplier Type", ["Farmer", "Merchant", "Company"])
-                id_num = c3.text_input("ID Number (TCKN/VKN)")
+                supplier = c1.text_input("Tedarikçi Adı")
+                sup_type = c2.selectbox("Tedarikçi Tipi", ["Müstahsil", "Tüccar", "Şirket"])
+                id_num = c3.text_input("TCKN / VKN")
                 
                 c4, c5, c6 = st.columns(3)
-                city = c4.text_input("City/Village")
-                contact = c5.text_input("Phone Number")
-                cert_status = c6.selectbox("Certification", ["None", "Organic", "Rainforest Alliance", "Avella"])
+                city = c4.text_input("İl / İlçe / Köy")
+                contact = c5.text_input("Telefon No")
+                cert_status = c6.selectbox("Sertifikasyon", ["Yok", "Organik", "Rainforest Alliance", "Avella"])
 
                 c7, c8, c9 = st.columns(3)
-                reg_type = c7.selectbox("Registration Type", ["Purchased", "Loaned (Emanet)"])
-                location = c8.selectbox("Place of Delivery", ["Factory", "Field", "Store"])
-                hazelnut_type = c9.selectbox("Hazelnut Variety", ["Karışık", "Giresun Tombul", "Çakıldak", "Kara", "Sivri", "Palaz", "Badem", "Foşa", "Yomra"])
+                reg_type = c7.selectbox("Alım Şekli", ["Satın Alma", "Emanet"])
+                location = c8.selectbox("Alım Yeri", ["Fabrika", "Tarla", "Manav/Depo"])
+                hazelnut_type = c9.selectbox("Fındık Çeşidi", ["Karışık", "Giresun Tombul", "Çakıldak", "Kara", "Sivri", "Palaz", "Badem", "Foşa", "Yomra"])
                 
                 st.markdown("---")
-                st.subheader("2. Quality & Randıman")
+                st.subheader("2. Kalite & Randıman")
                 q1, q2, q3 = st.columns(3)
-                sample_w = q1.number_input("Sample Inshell Size (g)", value=250.0)
-                good_k = q2.number_input("Good Kernel (g)", value=0.0)
-                shriv_k = q3.number_input("Shrivelled Kernel (g)", value=0.0)
+                sample_w = q1.number_input("Numune Ağırlığı (g)", value=250.0)
+                good_k = q2.number_input("Sağlam İç (g)", value=0.0)
+                shriv_k = q3.number_input("Buruk İç (g)", value=0.0)
                 
                 d1, d2, d3 = st.columns(3)
-                vis_rot = d1.number_input("Visible Rotten (g)", value=0.0)
-                hid_rot = d2.number_input("Hidden Rotten (g)", value=0.0)
-                tumor = d3.number_input("Tumorous (g)", value=0.0)
+                vis_rot = d1.number_input("Görünen Çürük (g)", value=0.0)
+                hid_rot = d2.number_input("Gizli Çürük (g)", value=0.0)
+                tumor = d3.number_input("Ur (g)", value=0.0)
 
                 s1, s2, s3 = st.columns(3)
-                size_1 = s1.number_input("Size 1 %>13mm (%)", value=0.0)
-                under_size = s2.number_input("Undersize %<9mm (%)", value=0.0)
-                moisture = s3.number_input("Moisture (%)", 0.0, 20.0, 5.0)
+                size_1 = s1.number_input("Boy 1 %>13mm (%)", value=0.0)
+                under_size = s2.number_input("Elek Altı %<9mm (%)", value=0.0)
+                moisture = s3.number_input("Rutubet (%)", 0.0, 20.0, 5.0)
                 
-                calc_pressed = st.form_submit_button("🔄 Calculate Yield & Stats")
+                calc_pressed = st.form_submit_button("🔄 Randıman Hesapla")
                 randiman = calculate_randiman(sample_w, good_k, shriv_k)
-                st.metric("Calculated Randıman", f"{randiman:.2f}%")
+                st.metric("Hesaplanan Randıman", f"{randiman:.2f}%")
 
                 st.markdown("---")
-                st.subheader("3. Financials")
+                st.subheader("3. Finansal Bilgiler")
                 f1, f2 = st.columns(2)
-                net_weight = f1.number_input("Total Net Weight (kg)", min_value=0.0)
-                doc_num = f2.text_input("Document Number")
+                net_weight = f1.number_input("Toplam Net Ağırlık (kg)", min_value=0.0)
+                doc_num = f2.text_input("Müstahsil Makbuzu / Fatura No")
                 
-                if reg_type == "Loaned (Emanet)":
-                    st.info("Transaction is Emanet. Value is 0 TL.")
+                if reg_type == "Emanet":
+                    st.info("İşlem Emanettir. Tutar 0 TL olarak kaydedilecek.")
                     gross_price = 0.0; net_price_50 = 0.0; unit_price = 0.0; total_val = 0.0; remaining = 0.0
-                    pay_amount = 0.0; pay_method = "None"
+                    pay_amount = 0.0; pay_method = "Yok"
                 else:
-                    gross_price = st.number_input("Gross Price (50 Rand)", value=120.0)
+                    gross_price = st.number_input("Borsa Fiyatı (50 Randıman)", value=120.0)
                     net_price_50 = gross_price / 1.0245
                     unit_price = net_price_50 * (randiman / 50.0)
                     total_val = unit_price * net_weight
-                    st.write(f"**Net Price:** {net_price_50:.2f} TL | **Actual Unit Price:** {unit_price:.2f} TL")
-                    st.info(f"**TOTAL VALUE:** {total_val:,.2f} TL")
+                    st.write(f"**Net Fiyat (50 Rand):** {net_price_50:.2f} TL | **Gerçek Birim Fiyat:** {unit_price:.2f} TL")
+                    st.info(f"**TOPLAM TUTAR:** {total_val:,.2f} TL")
                     
                     pay_col1, pay_col2 = st.columns(2)
-                    pay_amount = pay_col1.number_input("Payment Amount", value=0.0)
-                    pay_method = pay_col2.selectbox("Way of Payment", ["Cash", "Bank Transfer", "Check"])
+                    pay_amount = pay_col1.number_input("Ödenen Tutar", value=0.0)
+                    pay_method = pay_col2.selectbox("Ödeme Yöntemi", ["Nakit", "Banka Havalesi", "Çek"])
                     remaining = total_val - pay_amount
-                    st.metric("Remaining Balance", f"{remaining:,.2f} TL")
+                    st.metric("Kalan Bakiye", f"{remaining:,.2f} TL")
 
-                submit_save = st.form_submit_button("✅ Create Contract & Save")
+                submit_save = st.form_submit_button("✅ Sözleşmeyi Kaydet")
                 if submit_save:
                     payload = {
                         "created_by": st.session_state.user.email, "status": "Pending Arrival",
@@ -140,16 +140,17 @@ else:
                     }
                     try:
                         insert_record("purchases", payload)
-                        st.success("Contract Saved!")
-                    except Exception as e: st.error(f"Error: {e}")
+                        st.success("Sözleşme Başarıyla Kaydedildi!")
+                    except Exception as e: st.error(f"Hata: {e}")
 
-        # --- B. MATERIALS LOGIC ---
-        elif type_selector == "Materials":
-            st.subheader("Material Selection")
-            material_cats = ["Packaging Materials", "Maintenance Materials", "Office Materials", "Cleaning Materials", "Give Aways", "Clothes and Textile", "Food & Kitchen", "Other"]
+        # --- B. MALZEME ALIMI ---
+        elif type_selector == "Malzeme":
+            st.subheader("Malzeme Seçimi")
+            # Veritabanındaki Türkçe isimlerle eşleşmeli
+            material_cats = ["Ambalaj Malzemeleri", "Bakım Malzemeleri", "Ofis Malzemeleri", "Temizlik Malzemeleri", "Eşantiyon & Hediye", "İş Kıyafetleri", "Gıda ve Mutfak", "Diğer"]
             
             c_cat, c_item = st.columns(2)
-            selected_mat_cat = c_cat.selectbox("Category", material_cats)
+            selected_mat_cat = c_cat.selectbox("Kategori", material_cats)
             
             try:
                 response = supabase.table("material_definitions").select("*").eq("category", selected_mat_cat).execute()
@@ -158,82 +159,83 @@ else:
             except: items_data = []; item_names = []
 
             if item_names:
-                selected_item_name = c_item.selectbox("Select Item", item_names)
+                selected_item_name = c_item.selectbox("Malzeme Seç", item_names)
                 selected_item_data = next((item for item in items_data if item["item_name"] == selected_item_name), None)
                 
                 if selected_item_data:
-                    with st.expander("ℹ️ View Item Specs", expanded=True):
+                    with st.expander("ℹ️ Özellikleri Görüntüle", expanded=True):
                         sp1, sp2, sp3 = st.columns(3)
-                        sp1.write(f"**Material:** {selected_item_data.get('mat_type', '-')}")
-                        sp2.write(f"**Use:** {selected_item_data.get('use_case', '-')}")
-                        sp3.write(f"**Other:** {selected_item_data.get('other_specs', '-')}")
-                        st.caption(f"Outer: {selected_item_data.get('dim_outer_l')} x {selected_item_data.get('dim_outer_w')} x {selected_item_data.get('dim_outer_d')} cm")
+                        sp1.write(f"**Materyal:** {selected_item_data.get('mat_type', '-')}")
+                        sp2.write(f"**Kullanım:** {selected_item_data.get('use_case', '-')}")
+                        sp3.write(f"**Diğer:** {selected_item_data.get('other_specs', '-')}")
+                        st.caption(f"Dış Ölçüler: {selected_item_data.get('dim_outer_l')} x {selected_item_data.get('dim_outer_w')} x {selected_item_data.get('dim_outer_d')} cm")
             else:
-                c_item.warning("No items defined.")
-                selected_item_name = c_item.text_input("Manual Item Name")
+                c_item.warning("Bu kategoride tanımlı malzeme yok.")
+                selected_item_name = c_item.text_input("Manuel Malzeme Adı")
 
             with st.form("material_form"):
-                supplier = st.text_input("Supplier")
+                supplier = st.text_input("Tedarikçi")
                 c3, c4 = st.columns(2)
-                qty = c3.number_input("Quantity", min_value=1.0, value=1.0)
-                price = c4.number_input("Total Cost", min_value=0.0)
+                qty = c3.number_input("Miktar / Adet", min_value=1.0, value=1.0)
+                price = c4.number_input("Toplam Maliyet (TL)", min_value=0.0)
                 
-                if st.form_submit_button("✅ Create Order"):
+                if st.form_submit_button("✅ Siparişi Oluştur"):
                     payload = {
-                        "category": "Materials", "supplier": supplier, "item_type": selected_item_name,
+                        "category": "Malzeme", "supplier": supplier, "item_type": selected_item_name,
                         "item_sub_type": selected_mat_cat, "qty_ordered": qty, "total_value": price,
                         "status": "Pending Arrival", "created_by": st.session_state.user.email
                     }
                     insert_record("purchases", payload)
-                    st.success("Order Saved!")
+                    st.success("Sipariş Kaydedildi!")
 
-        # --- C. GENERAL LOGIC ---
+        # --- C. GENEL (Makine, Hizmet) ---
         else:
             with st.form("general_form"):
                 c1, c2 = st.columns(2)
-                supplier = c1.text_input("Supplier")
-                item_desc = c2.text_input("Item Name")
+                supplier = c1.text_input("Tedarikçi / Sağlayıcı")
+                item_desc = c2.text_input("Açıklama / İsim")
                 c3, c4 = st.columns(2)
-                qty = c3.number_input("Quantity", 1.0)
-                price = c4.number_input("Cost", 0.0)
+                qty = c3.number_input("Miktar", 1.0)
+                price = c4.number_input("Toplam Tutar", 0.0)
                 
-                if st.form_submit_button("✅ Create Order"):
+                if st.form_submit_button("✅ Siparişi Oluştur"):
                     payload = {"category": type_selector, "supplier": supplier, "item_type": item_desc, "qty_ordered": qty, "total_value": price, "status": "Pending Arrival", "created_by": st.session_state.user.email}
                     insert_record("purchases", payload)
-                    st.success("Saved!")
+                    st.success("Kaydedildi!")
 
     # ==========================
-    # MODULE 2: INTAKE
+    # MODÜL 2: MAL KABUL (KANTAR)
     # ==========================
-    elif module == "2. Intake (Mal Kabul)":
-        st.title("Module 2: Factory Gate Intake")
+    elif module == "2. Mal Kabul (Kantar)":
+        st.title("Modül 2: Mal Kabul (Kantar Girişi)")
         try:
             response = supabase.table("purchases").select("*").eq("status", "Pending Arrival").execute()
             pending_df = pd.DataFrame(response.data)
             
             if not pending_df.empty:
-                st.subheader("Expected Arrivals")
+                st.subheader("Beklenen Sevkiyatlar")
+                # Tablo başlıklarını güncellemek için rename kullanabiliriz ama basit tutalım
                 st.dataframe(pending_df[["id", "supplier", "item_type", "qty_ordered", "location"]])
                 
                 st.markdown("---")
                 po_ids = pending_df['id'].tolist()
-                selected_id = st.selectbox("Select Purchase ID to Receive", po_ids)
+                selected_id = st.selectbox("Kabul Edilecek Siparişi Seçin (ID)", po_ids)
                 selected_row = pending_df[pending_df['id'] == selected_id].iloc[0]
                 
-                st.info(f"Receiving: **{selected_row['item_type']}** from {selected_row['supplier']}")
+                st.info(f"Kabul Ediliyor: **{selected_row['item_type']}** - {selected_row['supplier']}")
                 
                 with st.form("intake_confirm"):
                     c1, c2 = st.columns(2)
-                    plate = c1.text_input("Plate Number")
-                    waybill = c2.text_input("Waybill No")
-                    received_qty = st.number_input("Actual Received Quantity", value=float(selected_row['qty_ordered'] or 0))
-                    loc_warehouse = st.text_input("Warehouse Location")
+                    plate = c1.text_input("Araç Plakası")
+                    waybill = c2.text_input("İrsaliye No")
+                    received_qty = st.number_input("Kantar Net Ağırlık / Adet", value=float(selected_row['qty_ordered'] or 0))
+                    loc_warehouse = st.text_input("Depo / Silo Konumu")
                     
-                    if st.form_submit_button("Confirm Arrival"):
-                        # 1. Mark Purchase as Received
+                    if st.form_submit_button("Girişi Onayla"):
+                        # 1. Güncelle
                         supabase.table("purchases").update({"status": "Received"}).eq("id", selected_id).execute()
                         
-                        # 2. Save Receipt Log
+                        # 2. Kabul Logu
                         intake_payload = {
                             "po_id": int(selected_id), "plate_number": plate, "waybill_no": waybill,
                             "received_qty": received_qty, "variance": received_qty - float(selected_row['qty_ordered'] or 0),
@@ -241,165 +243,126 @@ else:
                         }
                         insert_record("intake_log", intake_payload)
                         
-                        # 3. UPDATE INVENTORY (STOCK MOVEMENTS)
+                        # 3. STOK GÜNCELLE
                         stock_payload = {
                             "item_name": selected_row['item_type'],
                             "category": selected_row.get('category', 'Unknown'),
-                            "quantity": received_qty, # Positive = Add to Stock
+                            "quantity": received_qty, 
                             "move_type": "Intake",
                             "location": loc_warehouse,
                             "created_by": st.session_state.user.email
                         }
                         insert_record("stock_movements", stock_payload)
 
-                        st.success("Arrival Confirmed & Added to Inventory!")
+                        st.success("Giriş Onaylandı ve Stoğa Eklendi!")
                         time.sleep(1)
                         st.rerun()
             else:
-                st.info("No pending shipments found.")
-        except Exception as e: st.error(f"Error: {e}")
+                st.info("Bekleyen sevkiyat bulunamadı.")
+        except Exception as e: st.error(f"Hata: {e}")
 
-# ==========================
-    # MODULE 3: ADMIN SETTINGS
     # ==========================
-    elif module == "3. Admin Settings":
-        st.title("🛠️ Admin Settings")
-        tab1, tab2 = st.tabs(["Manage Materials", "User Management"])
+    # MODÜL 3: YÖNETİCİ AYARLARI
+    # ==========================
+    elif module == "3. Yönetici Ayarları":
+        st.title("🛠️ Yönetici Ayarları")
+        tab1, tab2 = st.tabs(["Malzeme Tanımları", "Kullanıcı Yönetimi"])
         
         with tab1:
-            st.subheader("Manage Material Definitions")
-            fixed_cats = ["Packaging Materials", "Maintenance Materials", "Office Materials", "Cleaning Materials", "Give Aways", "Clothes and Textile", "Food & Kitchen", "Other"]
+            st.subheader("Malzeme Tanımlarını Yönet")
+            fixed_cats = ["Ambalaj Malzemeleri", "Bakım Malzemeleri", "Ofis Malzemeleri", "Temizlik Malzemeleri", "Eşantiyon & Hediye", "İş Kıyafetleri", "Gıda ve Mutfak", "Diğer"]
 
-            # 1. VIEW LIST
-            with st.expander("View Full Database List"):
+            with st.expander("Veritabanı Listesini Görüntüle"):
                 current = supabase.table("material_definitions").select("*").execute().data
                 st.dataframe(pd.DataFrame(current), use_container_width=True)
             
             st.markdown("---")
-            
-            # 2. ADD NEW ITEM
-            st.write("### ➕ Add New Item")
+            st.write("### ➕ Yeni Malzeme Ekle")
             with st.form("add_material_form"):
                 c1, c2 = st.columns(2)
-                new_cat = c1.selectbox("Category", fixed_cats)
-                new_item = c2.text_input("Item Name")
+                new_cat = c1.selectbox("Kategori", fixed_cats)
+                new_item = c2.text_input("Malzeme Adı")
                 
                 g1, g2, g3 = st.columns(3)
-                use_case = g1.text_input("Use"); mat_type = g2.text_input("Material"); other_spec = g3.text_input("Specs")
+                use_case = g1.text_input("Kullanım Amacı"); mat_type = g2.text_input("Materyal (Plastik vb.)"); other_spec = g3.text_input("Diğer Özellikler")
                 
                 o1, o2, o3 = st.columns(3)
-                out_l = o1.number_input("Outer L", 0.0); out_w = o2.number_input("Outer W", 0.0); out_d = o3.number_input("Outer D", 0.0)
+                out_l = o1.number_input("Dış Uzunluk", 0.0); out_w = o2.number_input("Dış Genişlik", 0.0); out_d = o3.number_input("Dış Derinlik", 0.0)
                 
                 i1, i2, i3 = st.columns(3)
-                inn_l = i1.number_input("Inner L", 0.0); inn_w = i2.number_input("Inner W", 0.0); inn_d = i3.number_input("Inner D", 0.0)
+                inn_l = i1.number_input("İç Uzunluk", 0.0); inn_w = i2.number_input("İç Genişlik", 0.0); inn_d = i3.number_input("İç Derinlik", 0.0)
 
-                if st.form_submit_button("Save Definition"):
+                if st.form_submit_button("Tanımı Kaydet"):
                     if new_item:
                         payload = {"category": new_cat, "item_name": new_item, "use_case": use_case, "mat_type": mat_type, "other_specs": other_spec, "dim_outer_l": out_l, "dim_outer_w": out_w, "dim_outer_d": out_d, "dim_inner_l": inn_l, "dim_inner_w": inn_w, "dim_inner_d": inn_d}
                         supabase.table("material_definitions").insert(payload).execute()
-                        st.success("Added!"); time.sleep(1); st.rerun()
+                        st.success("Eklendi!"); time.sleep(1); st.rerun()
 
             st.markdown("---")
-            
-            # 3. MODIFY ITEM (UPDATED: NOW SHOWS ALL FIELDS)
-            st.write("### ✏️ Modify Item")
+            st.write("### ✏️ Düzenle (Modify)")
             m1, m2 = st.columns(2)
-            mod_cat_filter = m1.selectbox("Filter Category (Modify)", fixed_cats)
+            mod_cat_filter = m1.selectbox("Kategori Filtrele", fixed_cats)
             mod_items = supabase.table("material_definitions").select("*").eq("category", mod_cat_filter).order('item_name').execute().data
             
             if mod_items:
                 mod_names = [i['item_name'] for i in mod_items]
-                target_name = m2.selectbox("Select Item to Edit", mod_names)
-                
-                # Find the existing data
+                target_name = m2.selectbox("Düzenlenecek Malzeme", mod_names)
                 target_row = next(i for i in mod_items if i["item_name"] == target_name)
                 
                 with st.form("modify_form"):
-                    st.info(f"Editing ID: {target_row['id']}")
+                    st.info(f"Düzenleniyor: {target_name}")
+                    c_new_name = st.text_input("İsim", value=target_row['item_name'])
                     
-                    # General Info
-                    mc1, mc2 = st.columns(2)
-                    m_name = mc1.text_input("Name", value=target_row['item_name'])
-                    m_cat = mc2.selectbox("Category", fixed_cats, index=fixed_cats.index(target_row['category']) if target_row['category'] in fixed_cats else 0)
+                    c_mat = st.text_input("Materyal", value=target_row.get('mat_type') or "")
+                    c_use = st.text_input("Kullanım", value=target_row.get('use_case') or "")
                     
-                    # Specs
-                    mg1, mg2, mg3 = st.columns(3)
-                    m_use = mg1.text_input("Use", value=target_row.get('use_case') or "")
-                    m_mat = mg2.text_input("Material", value=target_row.get('mat_type') or "")
-                    m_spec = mg3.text_input("Specs", value=target_row.get('other_specs') or "")
-                    
-                    # Dimensions (We use 'or 0.0' to handle cases where DB is empty/null)
-                    st.caption("Dimensions (Outer)")
-                    mo1, mo2, mo3 = st.columns(3)
-                    m_out_l = mo1.number_input("Outer L", value=float(target_row.get('dim_outer_l') or 0.0))
-                    m_out_w = mo2.number_input("Outer W", value=float(target_row.get('dim_outer_w') or 0.0))
-                    m_out_d = mo3.number_input("Outer D", value=float(target_row.get('dim_outer_d') or 0.0))
-                    
-                    st.caption("Dimensions (Inner)")
-                    mi1, mi2, mi3 = st.columns(3)
-                    m_inn_l = mi1.number_input("Inner L", value=float(target_row.get('dim_inner_l') or 0.0))
-                    m_inn_w = mi2.number_input("Inner W", value=float(target_row.get('dim_inner_w') or 0.0))
-                    m_inn_d = mi3.number_input("Inner D", value=float(target_row.get('dim_inner_d') or 0.0))
-
-                    if st.form_submit_button("Update Item"):
-                        update_payload = {
-                            "item_name": m_name, "category": m_cat,
-                            "use_case": m_use, "mat_type": m_mat, "other_specs": m_spec,
-                            "dim_outer_l": m_out_l, "dim_outer_w": m_out_w, "dim_outer_d": m_out_d,
-                            "dim_inner_l": m_inn_l, "dim_inner_w": m_inn_w, "dim_inner_d": m_inn_d
-                        }
-                        supabase.table("material_definitions").update(update_payload).eq("id", target_row['id']).execute()
-                        st.success("Updated successfully!"); time.sleep(1); st.rerun()
-            else:
-                st.warning("No items found in this category.")
+                    if st.form_submit_button("Güncelle"):
+                        supabase.table("material_definitions").update({"item_name": c_new_name, "mat_type": c_mat, "use_case": c_use}).eq("id", target_row['id']).execute()
+                        st.success("Güncellendi!"); time.sleep(1); st.rerun()
 
             st.markdown("---")
-            
-            # 4. DELETE ITEM
-            st.write("### 🗑️ Delete Item")
+            st.write("### 🗑️ Sil")
             d1, d2, d3 = st.columns([2, 2, 1])
-            del_cat = d1.selectbox("Filter Category (Delete)", fixed_cats)
+            del_cat = d1.selectbox("Kategori Filtrele (Sil)", fixed_cats)
             del_items = supabase.table("material_definitions").select("*").eq("category", del_cat).execute().data
             
             if del_items:
                 del_names = [i['item_name'] for i in del_items]
-                del_target = d2.selectbox("Item to Delete", del_names)
-                if d3.button("Delete"):
+                del_target = d2.selectbox("Silinecek Malzeme", del_names)
+                if d3.button("Sil"):
                     supabase.table("material_definitions").delete().eq("category", del_cat).eq("item_name", del_target).execute()
-                    st.success("Deleted"); time.sleep(1); st.rerun()
+                    st.success("Silindi"); time.sleep(1); st.rerun()
 
     # ==========================
-    # MODULE 4: INVENTORY
+    # MODÜL 4: STOK TAKİBİ
     # ==========================
-    elif module == "4. Inventory":
-        st.title("📦 Live Inventory")
+    elif module == "4. Stok Takibi":
+        st.title("📦 Canlı Stok Durumu")
         
-        # 1. Fetch all movements
+        # 1. Hareketleri Çek
         moves = supabase.table("stock_movements").select("*").execute().data
         df_moves = pd.DataFrame(moves)
         
         if not df_moves.empty:
-            # 2. Calculate Current Stock
-            # Group by Item Name and Sum the Quantity column
+            # 2. Stoğu Hesapla
             inventory_summary = df_moves.groupby('item_name')['quantity'].sum().reset_index()
-            inventory_summary.columns = ['Item Name', 'Current Stock']
+            inventory_summary.columns = ['Malzeme / Ürün', 'Mevcut Stok']
             
             col1, col2 = st.columns([2, 1])
             with col1:
-                st.subheader("Current Stock Levels")
+                st.subheader("Mevcut Stok Seviyeleri")
                 st.dataframe(inventory_summary, use_container_width=True)
             
             with col2:
-                st.metric("Total Items Tracked", len(inventory_summary))
-                st.metric("Total Transactions", len(df_moves))
+                st.metric("Takip Edilen Kalem", len(inventory_summary))
+                st.metric("Toplam Hareket", len(df_moves))
 
             st.markdown("---")
-            st.subheader("📜 Movement History (Audit Trail)")
+            st.subheader("📜 Hareket Geçmişi")
             
-            # Filter History
-            filter_item = st.selectbox("Filter History by Item", ["All"] + list(df_moves['item_name'].unique()))
+            filter_item = st.selectbox("Ürün Filtrele", ["Tümü"] + list(df_moves['item_name'].unique()))
             
-            if filter_item != "All":
+            if filter_item != "Tümü":
                 display_df = df_moves[df_moves['item_name'] == filter_item]
             else:
                 display_df = df_moves
@@ -407,4 +370,4 @@ else:
             st.dataframe(display_df.sort_values(by='created_at', ascending=False), use_container_width=True)
             
         else:
-            st.info("No inventory movements recorded yet. Go to Intake (Module 2) to receive goods.")
+            st.info("Henüz stok hareketi yok. Mal Kabul modülünden giriş yapınız.")
