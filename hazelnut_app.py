@@ -334,7 +334,7 @@ else:
         except Exception as e:
             st.error(f"Error loading data: {e}")
 
-    # ==========================
+   # ==========================
     # MODULE 3: ADMIN SETTINGS
     # ==========================
     elif module == "3. Admin Settings":
@@ -351,7 +351,7 @@ else:
                 "Food & Kitchen", "Other"
             ]
 
-            # 1. VIEW LIST
+            # 1. VIEW CURRENT LIST
             with st.expander("View Full Database List"):
                 current_materials = supabase.table("material_definitions").select("*").execute().data
                 st.dataframe(pd.DataFrame(current_materials), use_container_width=True)
@@ -387,29 +387,13 @@ else:
                 inn_w = i2.number_input("Inner W", 0.0)
                 inn_d = i3.number_input("Inner Depth", 0.0)
 
-                # Open / Closed (Optional)
-                with st.expander("Open / Closed Dimensions (Optional)"):
-                    st.caption("Open Dimensions")
-                    op1, op2, op3 = st.columns(3)
-                    op_l = op1.number_input("Open L", 0.0)
-                    op_w = op2.number_input("Open W", 0.0)
-                    op_d = op3.number_input("Open Depth", 0.0)
-
-                    st.caption("Closed Dimensions")
-                    cl1, cl2, cl3 = st.columns(3)
-                    cl_l = cl1.number_input("Closed L", 0.0)
-                    cl_w = cl2.number_input("Closed W", 0.0)
-                    cl_d = cl3.number_input("Closed Depth", 0.0)
-
                 if st.form_submit_button("Save New Item Definition"):
                     if new_item:
                         payload = {
                             "category": new_cat, "item_name": new_item,
                             "use_case": use_case, "mat_type": mat_type, "other_specs": other_spec,
                             "dim_outer_l": out_l, "dim_outer_w": out_w, "dim_outer_d": out_d,
-                            "dim_inner_l": inn_l, "dim_inner_w": inn_w, "dim_inner_d": inn_d,
-                            "dim_open_l": op_l, "dim_open_w": op_w, "dim_open_d": op_d,
-                            "dim_closed_l": cl_l, "dim_closed_w": cl_w, "dim_closed_d": cl_d
+                            "dim_inner_l": inn_l, "dim_inner_w": inn_w, "dim_inner_d": inn_d
                         }
                         supabase.table("material_definitions").insert(payload).execute()
                         st.success(f"Added {new_item} with full specs!")
@@ -417,14 +401,52 @@ else:
                         st.rerun()
                     else:
                         st.error("Name is required.")
-            
+
             st.markdown("---")
 
-            # 3. DELETE ITEM
+            # 3. MODIFY ITEM
+            st.write("### ✏️ Modify Item")
+            
+            m1, m2 = st.columns(2)
+            mod_cat_filter = m1.selectbox("Filter by Category (Modify)", fixed_cats, key="mod_filter")
+            
+            # Fetch items
+            mod_items_data = supabase.table("material_definitions").select("*").eq("category", mod_cat_filter).order('item_name').execute().data
+            
+            if mod_items_data:
+                mod_item_names = [item['item_name'] for item in mod_items_data]
+                target_item_name = m2.selectbox("Select Item to Edit", mod_item_names, key="mod_select")
+                
+                # Get target row
+                target_row = next(item for item in mod_items_data if item["item_name"] == target_item_name)
+                
+                with st.form("modify_form"):
+                    st.write(f"Editing: **{target_item_name}**")
+                    # Use pre-filled values from DB
+                    c_new_name = st.text_input("Item Name", value=target_row['item_name'])
+                    c_use = st.text_input("Use / Function", value=target_row.get('use_case', ''))
+                    c_mat = st.text_input("Material", value=target_row.get('mat_type', ''))
+                    
+                    if st.form_submit_button("Update Item"):
+                        supabase.table("material_definitions").update({
+                            "item_name": c_new_name,
+                            "use_case": c_use,
+                            "mat_type": c_mat
+                        }).eq("id", target_row['id']).execute()
+                        
+                        st.success("Item Updated!")
+                        time.sleep(1)
+                        st.rerun()
+            else:
+                m2.warning("No items in this category.")
+
+            st.markdown("---")
+
+            # 4. DELETE ITEM
             st.write("### 🗑️ Delete Item")
             d1, d2, d3 = st.columns([2, 2, 1])
             
-            del_cat = d1.selectbox("Category", fixed_cats, key="del_cat")
+            del_cat = d1.selectbox("Filter by Category (Delete)", fixed_cats, key="del_cat")
             del_data = supabase.table("material_definitions").select("*").eq("category", del_cat).execute().data
             
             if del_data:
