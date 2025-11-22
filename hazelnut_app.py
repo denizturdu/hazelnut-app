@@ -314,19 +314,31 @@ else:
                     received_qty = st.number_input("Actual Received Quantity", value=float(selected_row['qty_ordered'] or 0))
                     loc_warehouse = st.text_input("Warehouse Location")
                     
-                    if st.form_submit_button("Confirm Arrival"):
+if st.form_submit_button("Confirm Arrival"):
+                        # 1. Update Purchase Status
                         supabase.table("purchases").update({"status": "Received"}).eq("id", selected_id).execute()
+                        
+                        # 2. Insert into Intake Log (The Receipt)
                         intake_payload = {
                             "po_id": int(selected_id),
-                            "plate_number": plate,
-                            "waybill_no": waybill,
                             "received_qty": received_qty,
-                            "variance": received_qty - float(selected_row['qty_ordered'] or 0),
-                            "location_in_warehouse": loc_warehouse,
+                            "item_name": selected_row['item_type'], # Save item name for reference
                             "created_by": st.session_state.user.email
                         }
                         insert_record("intake_log", intake_payload)
-                        st.success("Arrival Confirmed!")
+
+                        # 3. INSERT INTO STOCK MOVEMENTS (The Inventory Increase)
+                        stock_payload = {
+                            "item_name": selected_row['item_type'],
+                            "category": selected_row.get('category', 'Unknown'),
+                            "quantity": received_qty,  # Positive Number = Stock INCREASE
+                            "move_type": "Intake",
+                            "location": loc_warehouse,
+                            "created_by": st.session_state.user.email
+                        }
+                        insert_record("stock_movements", stock_payload)
+
+                        st.success("Arrival Confirmed & Stock Increased!")
                         time.sleep(1)
                         st.rerun()
             else:
