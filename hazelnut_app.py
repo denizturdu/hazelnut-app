@@ -65,19 +65,28 @@ else:
             with st.form("hazelnut_form"):
                 st.subheader("1. Müstahsil & Tedarikçi")
                 
+                # Satır 1: Temel Bilgiler
                 c1, c2, c3 = st.columns(3)
                 supplier = c1.text_input("Tedarikçi Adı")
                 sup_type = c2.selectbox("Tedarikçi Tipi", ["Müstahsil", "Tüccar", "Şirket"])
                 id_num = c3.text_input("TCKN / VKN")
                 
-                c4, c5, c6 = st.columns(3)
-                city = c4.text_input("İl / İlçe / Köy")
-                contact = c5.text_input("Telefon No")
-                cert_status = c6.selectbox("Sertifikasyon", ["Yok", "Organik", "Rainforest Alliance", "Avella"])
+                # Satır 2: Lokasyon (YENİ DÜZENLEME)
+                st.caption("Adres Bilgileri")
+                loc1, loc2, loc3 = st.columns(3)
+                city_in = loc1.text_input("İl")
+                dist_in = loc2.text_input("İlçe")
+                vill_in = loc3.text_input("Köy / Mahalle")
 
+                # Satır 3: İletişim & Sertifika
+                c4, c5 = st.columns(2)
+                contact = c4.text_input("Telefon No")
+                cert_status = c5.selectbox("Sertifikasyon", ["Yok", "Organik", "Rainforest Alliance", "Avella"])
+
+                # Satır 4: Alım Detayları
+                st.markdown("---")
                 c7, c8, c9 = st.columns(3)
                 reg_type = c7.selectbox("Alım Şekli", ["Satın Alma", "Emanet"])
-                # GÜNCELLENEN ETİKET: TESLİMAT YERİ
                 location = c8.selectbox("Teslimat Yeri", ["Fabrika", "Tarla", "Manav/Depo"])
                 hazelnut_type = c9.selectbox("Fındık Çeşidi", ["Karışık", "Giresun Tombul", "Çakıldak", "Kara", "Sivri", "Palaz", "Badem", "Foşa", "Yomra"])
                 
@@ -139,7 +148,14 @@ else:
                     payload = {
                         "created_by": st.session_state.user.email, "status": "Pending Arrival",
                         "category": type_selector, "supplier": supplier, "supplier_type": sup_type,
-                        "id_number": id_num, "city": city, "phone_number": contact, "cert_status": cert_status,
+                        "id_number": id_num, 
+                        
+                        # NEW LOCATION FIELDS
+                        "city": city_in, 
+                        "district": dist_in,
+                        "village": vill_in,
+
+                        "phone_number": contact, "cert_status": cert_status,
                         "reg_type": reg_type, "location": location, "item_type": hazelnut_type,
                         "sample_weight": sample_w, "good_kernel": good_k, "shrivelled_kernel": shriv_k,
                         "calculated_randiman": randiman, "visible_rotten": vis_rot, "hidden_rotten": hid_rot,
