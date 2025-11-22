@@ -45,7 +45,6 @@ else:
         st.session_state.user = None
         st.rerun()
         
-    # --- GÜNCELLENMİŞ MENÜ LİSTESİ ---
     menu_options = ["1. Satın Alma", "2. Fabrika Ürün Girişi", "3. Yönetici Ayarları", "4. Stok Takibi"]
     module = st.sidebar.radio("Menü", menu_options)
 
@@ -64,7 +63,9 @@ else:
         # --- A. FINDIK ALIMI ---
         if type_selector in hazelnut_group:
             with st.form("hazelnut_form"):
-                st.subheader("1. Müstahsil & Kaynak")
+                # --- GÜNCELLENMİŞ BAŞLIK BURADA ---
+                st.subheader("1. Müstahsil & Tedarikçi")
+                
                 c1, c2, c3 = st.columns(3)
                 supplier = c1.text_input("Tedarikçi Adı")
                 sup_type = c2.selectbox("Tedarikçi Tipi", ["Müstahsil", "Tüccar", "Şirket"])
@@ -204,7 +205,7 @@ else:
                     st.success("Kaydedildi!")
 
     # ==========================
-    # MODÜL 2: FABRİKA ÜRÜN GİRİŞİ (ESKİ ADI: MAL KABUL)
+    # MODÜL 2: FABRİKA ÜRÜN GİRİŞİ
     # ==========================
     elif module == "2. Fabrika Ürün Girişi":
         st.title("Modül 2: Fabrika Ürün Girişi")
