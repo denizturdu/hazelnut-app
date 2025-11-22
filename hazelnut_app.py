@@ -104,11 +104,13 @@ else:
                 st.markdown("---")
                 st.subheader("3. Finansal Bilgiler")
                 
-                # --- YENİ EKLENEN PAKETLEME KISMI ---
-                st.caption("Paketleme Detayları")
-                p1, p2 = st.columns(2)
-                pack_type = p1.selectbox("Paketleme Tipi", ["Naylon Çuval", "Jüt Çuval", "Bigbag", "Dökme"])
-                pack_count = p2.number_input("Paket Adedi", min_value=0, step=1)
+                # --- GÜNCELLENEN PAKETLEME KISMI (ÇOKLU SEÇİM) ---
+                st.caption("Paketleme Detayları (Adet Giriniz)")
+                p1, p2, p3 = st.columns(3)
+                # Kullanıcı hepsine ayrı ayrı sayı girebilir
+                cnt_nylon = p1.number_input("Naylon Çuval Adedi", min_value=0, step=1)
+                cnt_jute = p2.number_input("Jüt Çuval Adedi", min_value=0, step=1)
+                cnt_bigbag = p3.number_input("Big Bag Adedi", min_value=0, step=1)
 
                 st.caption("Ağırlık ve Fiyat")
                 f1, f2 = st.columns(2)
@@ -144,9 +146,10 @@ else:
                         "calculated_randiman": randiman, "visible_rotten": vis_rot, "hidden_rotten": hid_rot,
                         "tumorous": tumor, "size_1_percent": size_1, "undersize_percent": under_size, "moisture": moisture,
                         
-                        # NEW FIELDS
-                        "packaging_type": pack_type,
-                        "package_count": pack_count,
+                        # NEW FIELDS (Specific Counts)
+                        "count_nylon": cnt_nylon,
+                        "count_jute": cnt_jute,
+                        "count_bigbag": cnt_bigbag,
 
                         "qty_ordered": net_weight, "document_number": doc_num, "gross_price_50": gross_price,
                         "net_price_50": net_price_50, "actual_unit_price": unit_price, "total_value": total_val,
