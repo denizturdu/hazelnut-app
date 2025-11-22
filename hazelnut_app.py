@@ -72,7 +72,7 @@ else:
                 c4, c5, c6 = st.columns(3)
                 city = c4.text_input("İl / İlçe / Köy")
                 contact = c5.text_input("Telefon No")
-                cert_status = c6.selectbox("Sertifikasyon", ["Yok", "Organik", "Rainforest Alliance", "Avella"])
+                cert_status = c6.selectbox("Sertifikasyon", ["Yok", "Organik", "Rainforest Alliance", "Avella", "TekFındık"])
 
                 c7, c8, c9 = st.columns(3)
                 reg_type = c7.selectbox("Alım Şekli", ["Satın Alma", "Emanet"])
