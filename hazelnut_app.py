@@ -200,34 +200,44 @@ else:
                     "Food & Kitchen", "Other"
                 ]
                 
-                with st.form("material_form"):
-                    c1, c2 = st.columns(2)
-                    supplier = c1.text_input("Supplier")
-                    selected_mat_cat = c2.selectbox("Material Category", material_cats)
-                    
-                    # Fetch items dynamic
-                    try:
-                        response = supabase.table("material_definitions").select("item_name").eq("category", selected_mat_cat).execute()
-                        item_list = [row['item_name'] for row in response.data]
-                        if item_list:
-                            item_name = st.selectbox("Select Item", item_list)
-                        else:
-                            st.warning(f"No items found for {selected_mat_cat}.")
-                            item_name = st.text_input("Type Item Name manually")
-                    except:
-                        item_name = st.text_input("Item Name")
+                st.subheader("Material Details")
+                
+                # --- PART 1: SELECTORS (OUTSIDE THE FORM) ---
+                # We put these outside so they update instantly when you change them
+                c_cat, c_item = st.columns(2)
+                
+                selected_mat_cat = c_cat.selectbox("Material Category", material_cats)
+                
+                # Dynamic Fetch based on the live selection above
+                try:
+                    response = supabase.table("material_definitions").select("item_name").eq("category", selected_mat_cat).execute()
+                    item_list = [row['item_name'] for row in response.data]
+                except:
+                    item_list = []
 
+                if item_list:
+                    item_name = c_item.selectbox("Select Item", item_list)
+                else:
+                    c_item.warning(f"No items found for {selected_mat_cat}.")
+                    item_name = c_item.text_input("Type Item Name manually")
+
+                # --- PART 2: DATA ENTRY (INSIDE THE FORM) ---
+                # We keep these inside so the app doesn't reload while you type the supplier name
+                with st.form("material_form"):
+                    supplier = st.text_input("Supplier")
+                    
                     c3, c4 = st.columns(2)
                     qty = c3.number_input("Quantity", min_value=1.0, value=1.0)
                     price = c4.number_input("Total Estimated Cost (TL)", min_value=0.0)
                     
                     submit_mat = st.form_submit_button("✅ Create Material Order")
+                    
                     if submit_mat:
                         payload = {
                             "category": "Materials",
                             "supplier": supplier,
-                            "item_type": item_name, # Item Name
-                            "item_sub_type": selected_mat_cat, # Category
+                            "item_type": item_name,     # The item we picked outside
+                            "item_sub_type": selected_mat_cat, # The category we picked outside
                             "qty_ordered": qty,
                             "total_value": price,
                             "status": "Pending Arrival",
@@ -235,7 +245,6 @@ else:
                         }
                         insert_record("purchases", payload)
                         st.success("Material Order Saved!")
-
             # LOGIC FOR MACHINES & SERVICES
             else:
                 with st.form("general_form"):
