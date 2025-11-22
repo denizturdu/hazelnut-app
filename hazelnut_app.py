@@ -46,8 +46,7 @@ else:
         st.session_state.user = None
         st.rerun()
         
-    module = st.sidebar.radio("Navigate", ["1. Purchase (Satın Alma)", "2. Intake (Mal Kabul)"])
-
+module = st.sidebar.radio("Navigate", ["1. Purchase (Satın Alma)", "2. Intake (Mal Kabul)", "3. Admin Settings"])
 # ==========================
     # MODULE 1: PURCHASE
     # ==========================
