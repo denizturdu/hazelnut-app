@@ -201,35 +201,66 @@ else:
                     except Exception as e:
                         st.error(f"Error saving: {e}")
 
-        # --- LOGIC FOR GENERAL GROUP (Materials, Machines, Services) ---
+# --- LOGIC FOR GENERAL GROUP (Materials, Machines, Services) ---
         else:
             st.subheader(f"Purchase Order: {type_selector}")
-            with st.form("general_form"):
-                c1, c2 = st.columns(2)
-                supplier = c1.text_input("Supplier / Provider")
-                item_desc = c2.text_input("Description / Item Name")
+            
+            # SPECIAL LOGIC FOR MATERIALS: Fetch from DB
+            if type_selector == "Materials":
+                # 1. Define the 8 Main Categories
+                material_cats = [
+                    "Packaging Materials", "Maintenance Materials", "Office Materials",
+                    "Cleaning Materials", "Give Aways", "Clothes and Textile",
+                    "Food & Kitchen", "Other"
+                ]
                 
-                c3, c4 = st.columns(2)
-                qty = c3.number_input("Quantity", min_value=1.0, value=1.0)
-                price = c4.number_input("Total Estimated Cost (TL)", min_value=0.0)
-                
-                submit_general = st.form_submit_button(f"✅ Create {type_selector} Order")
-                
-                if submit_general:
-                    payload = {
-                        "category": type_selector, # Will be 'Materials', 'Machines', or 'Services'
-                        "supplier": supplier,
-                        "item_type": item_desc,
-                        "qty_ordered": qty,
-                        "total_value": price,
-                        "status": "Pending Arrival",
-                        "created_by": st.session_state.user.email
-                    }
+                with st.form("material_form"):
+                    c1, c2 = st.columns(2)
+                    supplier = c1.text_input("Supplier")
+                    
+                    # Category Selector
+                    selected_mat_cat = c2.selectbox("Material Category", material_cats)
+                    
+                    # Item Selector (Dynamic)
+                    # We fetch items from DB that match the selected category
+                    # Note: In a real app, we might cache this to avoid slow loading, 
+                    # but for now we query directly.
                     try:
+                        response = supabase.table("material_definitions").select("item_name").eq("category", selected_mat_cat).execute()
+                        # Convert list of dicts [{'item_name': 'X'}, {'item_name': 'Y'}] to list ['X', 'Y']
+                        item_list = [row['item_name'] for row in response.data]
+                        
+                        # If list is empty, show a text box so they aren't stuck
+                        if item_list:
+                            item_name = st.selectbox("Select Item", item_list)
+                        else:
+                            st.warning(f"No items found in DB for {selected_mat_cat}. Please ask Admin to add them.")
+                            item_name = st.text_input("Type Item Name manually")
+                            
+                    except:
+                        item_name = st.text_input("Item Name")
+
+                    c3, c4 = st.columns(2)
+                    qty = c3.number_input("Quantity", min_value=1.0, value=1.0)
+                    price = c4.number_input("Total Estimated Cost (TL)", min_value=0.0)
+                    
+                    submit_mat = st.form_submit_button("✅ Create Material Order")
+                    
+                    if submit_mat:
+                        payload = {
+                            "category": "Materials",
+                            "item_sub_type": selected_mat_cat, # We save the category here
+                            "supplier": supplier,
+                            "item_type": item_name,
+                            "qty_ordered": qty,
+                            "total_value": price,
+                            "status": "Pending Arrival",
+                            "created_by": st.session_state.user.email
+                        }
                         insert_record("purchases", payload)
-                        st.success(f"{type_selector} Order Saved!")
-                    except Exception as e:
-                        st.error(f"Error saving: {e}")
+                        st.success("Material Order Saved!")
+
+            
     # ==========================
     # MODULE 2: INTAKE
     # ==========================
@@ -290,87 +321,3 @@ else:
             st.error(f"Error loading data: {e}")
 
 
-# --- LOGIC FOR GENERAL GROUP (Materials, Machines, Services) ---
-        else:
-            st.subheader(f"Purchase Order: {type_selector}")
-            
-            # SPECIAL LOGIC FOR MATERIALS: Fetch from DB
-            if type_selector == "Materials":
-                # 1. Define the 8 Main Categories
-                material_cats = [
-                    "Packaging Materials", "Maintenance Materials", "Office Materials",
-                    "Cleaning Materials", "Give Aways", "Clothes and Textile",
-                    "Food & Kitchen", "Other"
-                ]
-                
-                with st.form("material_form"):
-                    c1, c2 = st.columns(2)
-                    supplier = c1.text_input("Supplier")
-                    
-                    # Category Selector
-                    selected_mat_cat = c2.selectbox("Material Category", material_cats)
-                    
-                    # Item Selector (Dynamic)
-                    # We fetch items from DB that match the selected category
-                    # Note: In a real app, we might cache this to avoid slow loading, 
-                    # but for now we query directly.
-                    try:
-                        response = supabase.table("material_definitions").select("item_name").eq("category", selected_mat_cat).execute()
-                        # Convert list of dicts [{'item_name': 'X'}, {'item_name': 'Y'}] to list ['X', 'Y']
-                        item_list = [row['item_name'] for row in response.data]
-                        
-                        # If list is empty, show a text box so they aren't stuck
-                        if item_list:
-                            item_name = st.selectbox("Select Item", item_list)
-                        else:
-                            st.warning(f"No items found in DB for {selected_mat_cat}. Please ask Admin to add them.")
-                            item_name = st.text_input("Type Item Name manually")
-                            
-                    except:
-                        item_name = st.text_input("Item Name")
-
-                    c3, c4 = st.columns(2)
-                    qty = c3.number_input("Quantity", min_value=1.0, value=1.0)
-                    price = c4.number_input("Total Estimated Cost (TL)", min_value=0.0)
-                    
-                    submit_mat = st.form_submit_button("✅ Create Material Order")
-                    
-                    if submit_mat:
-                        payload = {
-                            "category": "Materials",
-                            "item_sub_type": selected_mat_cat, # We save the category here
-                            "supplier": supplier,
-                            "item_type": item_name,
-                            "qty_ordered": qty,
-                            "total_value": price,
-                            "status": "Pending Arrival",
-                            "created_by": st.session_state.user.email
-                        }
-                        insert_record("purchases", payload)
-                        st.success("Material Order Saved!")
-
-            # LOGIC FOR MACHINES & SERVICES (Keep simple for now)
-            else:
-                with st.form("general_form"):
-                    c1, c2 = st.columns(2)
-                    supplier = c1.text_input("Supplier / Provider")
-                    item_desc = c2.text_input("Description / Item Name")
-                    
-                    c3, c4 = st.columns(2)
-                    qty = c3.number_input("Quantity", min_value=1.0, value=1.0)
-                    price = c4.number_input("Total Estimated Cost (TL)", min_value=0.0)
-                    
-                    submit_gen = st.form_submit_button(f"✅ Create {type_selector} Order")
-                    
-                    if submit_gen:
-                        payload = {
-                            "category": type_selector,
-                            "supplier": supplier,
-                            "item_type": item_desc,
-                            "qty_ordered": qty,
-                            "total_value": price,
-                            "status": "Pending Arrival",
-                            "created_by": st.session_state.user.email
-                        }
-                        insert_record("purchases", payload)
-                        st.success(f"{type_selector} Order Saved!")
