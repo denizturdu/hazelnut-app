@@ -18,17 +18,23 @@ def calculate_randiman(sample_weight, good_kernel, shrivelled_kernel):
         return 0.0
 
 # --- YARDIMCI: EKSTRA ORAN HESAPLAYICI ---
-def calculate_extra_rates(good, shriv, vis_rot, hid_rot, tumor):
+def calculate_extra_rates(sample_weight, good, shriv, vis_rot, hid_rot, tumor, size1, undersize):
     total_kernel = good + shriv + vis_rot + hid_rot + tumor
-    if total_kernel == 0: return 0.0, 0.0, 0.0, 0.0
+    base_weight = total_kernel if total_kernel > 0 else 1
+    
     try:
-        tumor_rate = (tumor / total_kernel) * 100
-        shriv_rate = (shriv / total_kernel) * 100
-        vis_rot_rate = (vis_rot / total_kernel) * 100
-        hid_rot_rate = (hid_rot / total_kernel) * 100
-        return tumor_rate, shriv_rate, vis_rot_rate, hid_rot_rate
+        tumor_rate = (tumor / base_weight) * 100
+        shriv_rate = (shriv / base_weight) * 100
+        vis_rot_rate = (vis_rot / base_weight) * 100
+        hid_rot_rate = (hid_rot / base_weight) * 100
+        
+        # Boylama Oranları (Genellikle toplam iç ağırlığa göre)
+        size1_rate = (size1 / base_weight) * 100
+        undersize_rate = (undersize / base_weight) * 100
+        
+        return tumor_rate, shriv_rate, vis_rot_rate, hid_rot_rate, size1_rate, undersize_rate
     except:
-        return 0.0, 0.0, 0.0, 0.0
+        return 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
 
 # --- GİRİŞ SİSTEMİ ---
 if 'user' not in st.session_state:
@@ -52,6 +58,7 @@ def login_section():
 if not st.session_state.user:
     login_section()
 else:
+    # Kenar Çubuğu
     st.sidebar.info(f"Kullanıcı: {st.session_state.user.email}")
     if st.sidebar.button("Çıkış Yap"):
         st.session_state.user = None
@@ -112,8 +119,8 @@ else:
                     tumor = st.number_input("Ur (g)", value=0.0)
                     
                     s1, s2 = st.columns(2)
-                    size_1 = s1.number_input("1. Numara İç - 13 mm üzeri (g)", value=0.0)
-                    under_size = s2.number_input("Elek Altı İç - 9 mm altı (g)", value=0.0)
+                    size_1_g = s1.number_input("1. Numara İç - 13 mm üzeri (g)", value=0.0)
+                    undersize_g = s2.number_input("Elek Altı İç - 9 mm altı (g)", value=0.0)
                     moisture = st.number_input("Nem (%)", 0.0, 20.0, 5.0)
 
                 with col_q2:
@@ -139,19 +146,25 @@ else:
                 calc_pressed = st.form_submit_button("🔄 Hesapla (Randıman & Fiyat)")
                 
                 randiman = calculate_randiman(sample_w, good_k, shriv_k)
-                tumor_r, shriv_r, vis_rot_r, hid_rot_r = calculate_extra_rates(good_k, shriv_k, vis_rot, hid_rot, tumor)
+                tumor_r, shriv_r, vis_rot_r, hid_rot_r, size1_r, under_r = calculate_extra_rates(
+                    sample_w, good_k, shriv_k, vis_rot, hid_rot, tumor, size_1_g, undersize_g
+                )
                 
                 net_price_50 = gross_price / 1.0245
                 unit_price = net_price_50 * (randiman / 50.0)
                 total_val = unit_price * net_weight
 
                 if calc_pressed or True: 
-                    k1, k2, k3, k4, k5 = st.columns(5)
+                    k1, k2, k3 = st.columns(3)
                     k1.metric("Randıman", f"%{randiman:.2f}")
-                    k2.metric("Buruşuk", f"%{shriv_r:.2f}")
-                    k3.metric("Urlu", f"%{tumor_r:.2f}")
-                    k4.metric("G. Çürük", f"%{vis_rot_r:.2f}")
-                    k5.metric("Gizli Çürük", f"%{hid_rot_r:.2f}")
+                    k2.metric("13mm+ Oranı", f"%{size1_r:.2f}")
+                    k3.metric("Elek Altı Oranı", f"%{under_r:.2f}")
+                    
+                    k4, k5, k6, k7 = st.columns(4)
+                    k4.metric("Buruşuk", f"%{shriv_r:.2f}")
+                    k5.metric("Urlu", f"%{tumor_r:.2f}")
+                    k6.metric("G. Çürük", f"%{vis_rot_r:.2f}")
+                    k7.metric("Gizli Çürük", f"%{hid_rot_r:.2f}")
                     
                     if reg_type != "Emanet":
                         st.success(f"💰 **TOPLAM TUTAR:** {total_val:,.2f} TL")
@@ -183,7 +196,7 @@ else:
                         "sample_weight": sample_w, "good_kernel": good_k, "shrivelled_kernel": shriv_k,
                         "calculated_randiman": randiman, "visible_rotten": vis_rot, "hidden_rotten": hid_rot,
                         "tumorous": tumor, 
-                        "size_1_percent": size_1, "undersize_percent": under_size, 
+                        "size_1_percent": size_1_g, "undersize_percent": undersize_g, 
                         "moisture": moisture,
                         "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag,
                         "qty_ordered": net_weight, "document_number": doc_num, "gross_price_50": gross_price,
@@ -214,15 +227,18 @@ else:
                 selected_item_data = next((item for item in items_data if item["item_name"] == selected_item_name), None)
                 
                 if selected_item_data:
-                    with st.expander("ℹ️ Malzeme Özellikleri", expanded=True):
+                    with st.expander("ℹ️ Özellikleri Görüntüle", expanded=True):
                         sp1, sp2, sp3 = st.columns(3)
                         sp1.write(f"**Materyal:** {selected_item_data.get('mat_type', '-')}")
                         sp2.write(f"**Kullanım:** {selected_item_data.get('use_case', '-')}")
+                        # YENİ EKLENEN BİLGİLER
                         sp3.write(f"**Satış Birimi:** {selected_item_data.get('sales_unit', '-')} ({selected_item_data.get('unit_quantity', 1)} adet)")
                         
                         sp4, sp5 = st.columns(2)
                         sp4.write(f"**Notlar:** {selected_item_data.get('notes', '-')}")
-                        sp5.caption(f"Dış Ölçüler: {selected_item_data.get('dim_outer_l')} x {selected_item_data.get('dim_outer_w')} x {selected_item_data.get('dim_outer_d')} cm")
+                        # YENİ BOYUT FORMATI
+                        sp5.caption(f"Dış Boyutlar: {selected_item_data.get('dim_outer', '-')}")
+                        sp5.caption(f"Ağırlık: {selected_item_data.get('unit_weight_g', '-')} g")
             else:
                 c_item.warning("Bu kategoride tanımlı malzeme yok.")
                 selected_item_name = c_item.text_input("Manuel Malzeme Adı")
@@ -322,7 +338,6 @@ else:
             st.subheader("Malzeme Tanımlarını Yönet")
             fixed_cats = ["Ambalaj Malzemeleri", "Bakım Malzemeleri", "Ofis Malzemeleri", "Temizlik Malzemeleri", "Eşantiyon & Hediye", "İş Kıyafetleri", "Gıda ve Mutfak", "Diğer"]
             
-            # --- YENİ BİRİM LİSTESİ ---
             unit_options = ['adet', 'gr', 'kg', 'bobin', 'rulo', 'paket', 'deste', 'palet', 'litre', 'mililitre', 'metreküp', 'desimetreküp', 'santimetreküp', 'metre', 'desimetre', 'santimetre', 'milimetre', 'bigbag', 'kamyon', 'tır', 'tank', 'metrekare', 'santimetrekare', 'ar', 'dekar', 'hektar']
 
             with st.expander("Veritabanı Listesini Görüntüle"):
@@ -345,12 +360,12 @@ else:
                 unit_q = u2.number_input("Satış Birimindeki Adet/Miktar", value=1.0)
                 notes_txt = st.text_area("Notlar")
 
-                st.caption("Boyutlar")
+                # --- GÜNCELLENEN BOYUT ALANLARI (TEXT) ---
+                st.caption("Boyutlar ve Ağırlık")
                 o1, o2, o3 = st.columns(3)
-                out_l = o1.number_input("Dış Uzunluk", 0.0); out_w = o2.number_input("Dış Genişlik", 0.0); out_d = o3.number_input("Dış Derinlik", 0.0)
-                
-                i1, i2, i3 = st.columns(3)
-                inn_l = i1.number_input("İç Uzunluk", 0.0); inn_w = i2.number_input("İç Genişlik", 0.0); inn_d = i3.number_input("İç Derinlik", 0.0)
+                dim_out_txt = o1.text_input("Dış Boyutlar (En x Boy x Yükseklik) mm")
+                dim_in_txt = o2.text_input("İç Boyutlar (En x Boy x Yükseklik) mm")
+                weight_g = o3.number_input("Ağırlık (gram)", 0.0)
 
                 if st.form_submit_button("Tanımı Kaydet"):
                     if new_item:
@@ -358,8 +373,10 @@ else:
                             "category": new_cat, "item_name": new_item, 
                             "use_case": use_case, "mat_type": mat_type, "other_specs": other_spec, 
                             "sales_unit": sales_u, "unit_quantity": unit_q, "notes": notes_txt,
-                            "dim_outer_l": out_l, "dim_outer_w": out_w, "dim_outer_d": out_d, 
-                            "dim_inner_l": inn_l, "dim_inner_w": inn_w, "dim_inner_d": inn_d
+                            # YENİ ALANLAR
+                            "dim_outer": dim_out_txt, 
+                            "dim_inner": dim_in_txt, 
+                            "unit_weight_g": weight_g
                         }
                         supabase.table("material_definitions").insert(payload).execute()
                         st.success("Eklendi!"); time.sleep(1); st.rerun()
@@ -385,23 +402,25 @@ else:
                     c_use = mg2.text_input("Kullanım", value=target_row.get('use_case') or "")
                     c_spec = mg3.text_input("Diğer", value=target_row.get('other_specs') or "")
                     
-                    # Units (Handle existing nulls)
+                    # Units
                     mu1, mu2 = st.columns(2)
                     current_unit = target_row.get('sales_unit') if target_row.get('sales_unit') in unit_options else unit_options[0]
                     c_sales_u = mu1.selectbox("Satış Birimi", unit_options, index=unit_options.index(current_unit))
                     c_unit_q = mu2.number_input("Birim Adet", value=float(target_row.get('unit_quantity') or 1.0))
                     c_notes = st.text_area("Notlar", value=target_row.get('notes') or "")
 
-                    # Dims
-                    c_ol = st.number_input("Dış Uzunluk", value=float(target_row.get('dim_outer_l') or 0.0))
-                    c_ow = st.number_input("Dış Genişlik", value=float(target_row.get('dim_outer_w') or 0.0))
-                    c_od = st.number_input("Dış Derinlik", value=float(target_row.get('dim_outer_d') or 0.0))
+                    # Dims (Updated to Text)
+                    st.caption("Boyutlar ve Ağırlık")
+                    mo1, mo2, mo3 = st.columns(3)
+                    c_dim_out = mo1.text_input("Dış Boyutlar", value=target_row.get('dim_outer') or "")
+                    c_dim_in = mo2.text_input("İç Boyutlar", value=target_row.get('dim_inner') or "")
+                    c_weight = mo3.number_input("Ağırlık (g)", value=float(target_row.get('unit_weight_g') or 0.0))
 
                     if st.form_submit_button("Güncelle"):
                         update_payload = {
                             "item_name": c_new_name, "mat_type": c_mat, "use_case": c_use, "other_specs": c_spec,
                             "sales_unit": c_sales_u, "unit_quantity": c_unit_q, "notes": c_notes,
-                            "dim_outer_l": c_ol, "dim_outer_w": c_ow, "dim_outer_d": c_od
+                            "dim_outer": c_dim_out, "dim_inner": c_dim_in, "unit_weight_g": c_weight
                         }
                         supabase.table("material_definitions").update(update_payload).eq("id", target_row['id']).execute()
                         st.success("Güncellendi!"); time.sleep(1); st.rerun()
