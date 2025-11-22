@@ -48,7 +48,7 @@ else:
         
     module = st.sidebar.radio("Navigate", ["1. Purchase (Satın Alma)", "2. Intake (Mal Kabul)"])
 
-    # ==========================
+# ==========================
     # MODULE 1: PURCHASE
     # ==========================
     if module == "1. Purchase (Satın Alma)":
@@ -57,6 +57,7 @@ else:
         type_selector = st.selectbox("Purchase Category", ["Hazelnut (Fındık)", "Materials/Goods", "Services"])
         
         if type_selector == "Hazelnut (Fındık)":
+            # WE START THE FORM HERE
             with st.form("hazelnut_form"):
                 st.subheader("1. Supplier & Origin")
                 c1, c2, c3 = st.columns(3)
@@ -71,16 +72,24 @@ else:
                 st.markdown("---")
                 st.subheader("2. Quality & Randıman")
                 
-                q1, q2, q3, q4 = st.columns(4)
-                sample_w = q1.number_input("Sample Inshell Size in Grams", value=100.0)
+                # INPUTS (Changing these will NOT trigger a reload now)
+                q1, q2, q3 = st.columns(3)
+                sample_w = q1.number_input("Sample Inshell Size in Grams", value=250.0)
                 good_k = q2.number_input("Good Kernel (g)", value=0.0)
                 shriv_k = q3.number_input("Shrivelled Kernel (g)", value=0.0)
                 
-                # Live Calc with NEW Formula
-                randiman = calculate_randiman(sample_w, good_k, shriv_k)
-                q4.metric("Calculated Randıman", f"{randiman:.2f}%")
+                # --- THE SPECIAL "CALCULATE" BUTTON ---
+                # This button submits the form just to update the math, but we don't save to DB yet.
+                calc_pressed = st.form_submit_button("🔄 Calculate Yield")
                 
-                moisture = st.number_input("Moisture (%)", 0.0, 20.0, 5.0)
+                # Perform Calculation
+                randiman = calculate_randiman(sample_w, good_k, shriv_k)
+                
+                # We display the result nicely using columns
+                m1, m2 = st.columns(2)
+                m1.metric("Calculated Randıman", f"{randiman:.2f}%")
+                
+                moisture = m2.number_input("Moisture (%)", 0.0, 20.0, 5.0)
 
                 st.markdown("---")
                 st.subheader("3. Financials")
@@ -105,9 +114,10 @@ else:
                     st.write(f"**Actual Price (per kg):** {unit_price:.2f} TL")
                     st.success(f"**TOTAL VALUE:** {total_val:,.2f} TL")
 
-                submit = st.form_submit_button("Create Contract")
+                # --- THE SAVE BUTTON ---
+                submit_save = st.form_submit_button("✅ Create Contract & Save")
                 
-                if submit:
+                if submit_save:
                     payload = {
                         "category": "Hazelnut",
                         "supplier": supplier,
