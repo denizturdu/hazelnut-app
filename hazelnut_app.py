@@ -85,7 +85,6 @@ else:
                 q1, q2, q3 = st.columns(3)
                 sample_w = q1.number_input("Numune Ağırlığı (g)", value=250.0)
                 good_k = q2.number_input("Sağlam İç (g)", value=0.0)
-                # İSİM BURUŞUK OLARAK GÜNCELLENDİ
                 shriv_k = q3.number_input("Buruşuk İç (g)", value=0.0)
                 
                 d1, d2, d3 = st.columns(3)
@@ -93,10 +92,11 @@ else:
                 hid_rot = d2.number_input("Gizli Çürük (g)", value=0.0)
                 tumor = d3.number_input("Ur (g)", value=0.0)
 
+                # --- GÜNCELLENEN ETİKETLER ---
                 s1, s2, s3 = st.columns(3)
-                size_1 = s1.number_input("Boy 1 %>13mm (%)", value=0.0)
-                under_size = s2.number_input("Elek Altı %<9mm (%)", value=0.0)
-                moisture = s3.number_input("Rutubet (%)", 0.0, 20.0, 5.0)
+                size_1 = s1.number_input("1. Numara (13 mm üzeri (%) )", value=0.0)
+                under_size = s2.number_input("Elek Altı (9 mm altı (%) )", value=0.0)
+                moisture = s3.number_input("Nem (%)", 0.0, 20.0, 5.0)
                 
                 calc_pressed = st.form_submit_button("🔄 Randıman Hesapla")
                 randiman = calculate_randiman(sample_w, good_k, shriv_k)
