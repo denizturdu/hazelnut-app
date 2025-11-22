@@ -18,7 +18,7 @@ def calculate_randiman(sample_weight, good_kernel, shrivelled_kernel):
     except:
         return 0.0
 
-# --- LOGIN ---
+# --- LOGIN SYSTEM ---
 if 'user' not in st.session_state:
     st.session_state.user = None
 
@@ -40,7 +40,7 @@ def login_section():
 if not st.session_state.user:
     login_section()
 else:
-    # Sidebar
+    # Sidebar Navigation
     st.sidebar.info(f"User: {st.session_state.user.email}")
     if st.sidebar.button("Logout"):
         st.session_state.user = None
@@ -54,7 +54,7 @@ else:
     if module == "1. Purchase (Satın Alma)":
         st.title("Module 1: Purchasing Hub")
         
-        # Define Groups
+        # Define Category Groups
         hazelnut_group = [
             "Inshell Hazelnuts (Kabuklu Findik)", 
             "Hazelnut Kernels (Ic Findik)", 
@@ -70,7 +70,7 @@ else:
         all_options = hazelnut_group + general_group
         type_selector = st.selectbox("Purchase Category", all_options)
         
-        # --- HAZELNUT LOGIC (Detailed Form) ---
+        # --- A. HAZELNUT LOGIC (Detailed Form) ---
         if type_selector in hazelnut_group:
             with st.form("hazelnut_form"):
                 st.subheader("1. Supplier & Origin (Kimlik)")
@@ -121,6 +121,7 @@ else:
                 net_weight = f1.number_input("Total Net Weight (kg)", min_value=0.0)
                 doc_num = f2.text_input("Document Number (Müstahsil Makbuzu No)")
                 
+                # Financial Logic
                 if reg_type == "Loaned (Emanet)":
                     st.info("Transaction is Emanet. Value is 0 TL.")
                     gross_price = 0.0
@@ -188,102 +189,99 @@ else:
                     except Exception as e:
                         st.error(f"Error saving: {e}")
 
-        # --- GENERAL LOGIC (Materials, Machines, Services) ---
-        else:
+        # --- B. MATERIALS LOGIC (Fetch from DB + Display Specs) ---
+        elif type_selector == "Materials":
             st.subheader(f"Purchase Order: {type_selector}")
             
-            # --- LOGIC FOR MATERIALS ---
-        else:
-            st.subheader(f"Purchase Order: {type_selector}")
+            material_cats = [
+                "Packaging Materials", "Maintenance Materials", "Office Materials",
+                "Cleaning Materials", "Give Aways", "Clothes and Textile",
+                "Food & Kitchen", "Other"
+            ]
             
-            if type_selector == "Materials":
-                material_cats = [
-                    "Packaging Materials", "Maintenance Materials", "Office Materials",
-                    "Cleaning Materials", "Give Aways", "Clothes and Textile",
-                    "Food & Kitchen", "Other"
-                ]
-                
-                st.subheader("Material Selection")
-                
-                # 1. Select Category & Item OUTSIDE form
-                c_cat, c_item = st.columns(2)
-                selected_mat_cat = c_cat.selectbox("Category", material_cats)
-                
-                try:
-                    # Fetch FULL details, not just name
-                    response = supabase.table("material_definitions").select("*").eq("category", selected_mat_cat).execute()
-                    items_data = response.data
-                    item_names = [row['item_name'] for row in items_data]
-                except:
-                    items_data = []
-                    item_names = []
+            st.subheader("Material Selection")
+            
+            # 1. Select Category & Item OUTSIDE form
+            c_cat, c_item = st.columns(2)
+            selected_mat_cat = c_cat.selectbox("Category", material_cats)
+            
+            try:
+                # Fetch FULL details
+                response = supabase.table("material_definitions").select("*").eq("category", selected_mat_cat).execute()
+                items_data = response.data
+                item_names = [row['item_name'] for row in items_data]
+            except:
+                items_data = []
+                item_names = []
 
-                if item_names:
-                    selected_item_name = c_item.selectbox("Select Item", item_names)
-                    
-                    # Find the specific row data for the selected item
-                    selected_item_data = next((item for item in items_data if item["item_name"] == selected_item_name), None)
-                    
-                    # --- DISPLAY SPECS (Read Only) ---
-                    if selected_item_data:
-                        with st.expander("ℹ️ View Item Specs", expanded=True):
-                            sp1, sp2, sp3 = st.columns(3)
-                            sp1.write(f"**Material:** {selected_item_data.get('mat_type', '-')}")
-                            sp2.write(f"**Use:** {selected_item_data.get('use_case', '-')}")
-                            sp3.write(f"**Other:** {selected_item_data.get('other_specs', '-')}")
-                            
-                            st.caption("Outer Dims (cm)")
-                            st.write(f"{selected_item_data.get('dim_outer_l')} x {selected_item_data.get('dim_outer_w')} x {selected_item_data.get('dim_outer_d')}")
+            if item_names:
+                selected_item_name = c_item.selectbox("Select Item", item_names)
+                
+                # Find the specific row data
+                selected_item_data = next((item for item in items_data if item["item_name"] == selected_item_name), None)
+                
+                # --- DISPLAY SPECS (Read Only) ---
+                if selected_item_data:
+                    with st.expander("ℹ️ View Item Specs", expanded=True):
+                        sp1, sp2, sp3 = st.columns(3)
+                        sp1.write(f"**Material:** {selected_item_data.get('mat_type', '-')}")
+                        sp2.write(f"**Use:** {selected_item_data.get('use_case', '-')}")
+                        sp3.write(f"**Other:** {selected_item_data.get('other_specs', '-')}")
+                        
+                        st.caption("Outer Dims (cm)")
+                        st.write(f"{selected_item_data.get('dim_outer_l')} x {selected_item_data.get('dim_outer_w')} x {selected_item_data.get('dim_outer_d')}")
 
-                else:
-                    c_item.warning("No items defined.")
-                    selected_item_name = c_item.text_input("Manual Item Name")
-
-                # 2. Purchase Details INSIDE form
-                with st.form("material_form"):
-                    supplier = st.text_input("Supplier")
-                    c3, c4 = st.columns(2)
-                    qty = c3.number_input("Quantity", min_value=1.0, value=1.0)
-                    price = c4.number_input("Total Cost (TL)", min_value=0.0)
-                    
-                    submit_mat = st.form_submit_button("✅ Create Order")
-                    
-                    if submit_mat:
-                        payload = {
-                            "category": "Materials",
-                            "supplier": supplier,
-                            "item_type": selected_item_name,
-                            "item_sub_type": selected_mat_cat,
-                            "qty_ordered": qty,
-                            "total_value": price,
-                            "status": "Pending Arrival",
-                            "created_by": st.session_state.user.email
-                        }
-                        insert_record("purchases", payload)
-                        st.success("Order Saved!")
-            # LOGIC FOR MACHINES & SERVICES
             else:
-                with st.form("general_form"):
-                    c1, c2 = st.columns(2)
-                    supplier = c1.text_input("Supplier / Provider")
-                    item_desc = c2.text_input("Description / Item Name")
-                    c3, c4 = st.columns(2)
-                    qty = c3.number_input("Quantity", min_value=1.0, value=1.0)
-                    price = c4.number_input("Total Estimated Cost (TL)", min_value=0.0)
-                    
-                    submit_gen = st.form_submit_button(f"✅ Create {type_selector} Order")
-                    if submit_gen:
-                        payload = {
-                            "category": type_selector,
-                            "supplier": supplier,
-                            "item_type": item_desc,
-                            "qty_ordered": qty,
-                            "total_value": price,
-                            "status": "Pending Arrival",
-                            "created_by": st.session_state.user.email
-                        }
-                        insert_record("purchases", payload)
-                        st.success(f"{type_selector} Order Saved!")
+                c_item.warning("No items defined in this category.")
+                selected_item_name = c_item.text_input("Manual Item Name")
+
+            # 2. Purchase Details INSIDE form
+            with st.form("material_form"):
+                supplier = st.text_input("Supplier")
+                c3, c4 = st.columns(2)
+                qty = c3.number_input("Quantity", min_value=1.0, value=1.0)
+                price = c4.number_input("Total Cost (TL)", min_value=0.0)
+                
+                submit_mat = st.form_submit_button("✅ Create Order")
+                
+                if submit_mat:
+                    payload = {
+                        "category": "Materials",
+                        "supplier": supplier,
+                        "item_type": selected_item_name,
+                        "item_sub_type": selected_mat_cat,
+                        "qty_ordered": qty,
+                        "total_value": price,
+                        "status": "Pending Arrival",
+                        "created_by": st.session_state.user.email
+                    }
+                    insert_record("purchases", payload)
+                    st.success("Order Saved!")
+
+        # --- C. GENERAL LOGIC (Machines & Services) ---
+        else:
+            st.subheader(f"Purchase Order: {type_selector}")
+            with st.form("general_form"):
+                c1, c2 = st.columns(2)
+                supplier = c1.text_input("Supplier / Provider")
+                item_desc = c2.text_input("Description / Item Name")
+                c3, c4 = st.columns(2)
+                qty = c3.number_input("Quantity", min_value=1.0, value=1.0)
+                price = c4.number_input("Total Estimated Cost (TL)", min_value=0.0)
+                
+                submit_gen = st.form_submit_button(f"✅ Create {type_selector} Order")
+                if submit_gen:
+                    payload = {
+                        "category": type_selector,
+                        "supplier": supplier,
+                        "item_type": item_desc,
+                        "qty_ordered": qty,
+                        "total_value": price,
+                        "status": "Pending Arrival",
+                        "created_by": st.session_state.user.email
+                    }
+                    insert_record("purchases", payload)
+                    st.success(f"{type_selector} Order Saved!")
 
     # ==========================
     # MODULE 2: INTAKE
@@ -347,17 +345,17 @@ else:
         with tab1:
             st.subheader("Manage Material Definitions")
             
-            # 1. VIEW CURRENT LIST
-            with st.expander("View Full Database List"):
-                current_materials = supabase.table("material_definitions").select("*").execute().data
-                st.dataframe(pd.DataFrame(current_materials), use_container_width=True)
-            
             fixed_cats = [
                 "Packaging Materials", "Maintenance Materials", "Office Materials",
                 "Cleaning Materials", "Give Aways", "Clothes and Textile",
                 "Food & Kitchen", "Other"
             ]
 
+            # 1. VIEW LIST
+            with st.expander("View Full Database List"):
+                current_materials = supabase.table("material_definitions").select("*").execute().data
+                st.dataframe(pd.DataFrame(current_materials), use_container_width=True)
+            
             st.markdown("---")
             
             # 2. ADD NEW ITEM (DETAILED)
@@ -421,16 +419,21 @@ else:
                         st.error("Name is required.")
             
             st.markdown("---")
+
+            # 3. DELETE ITEM
             st.write("### 🗑️ Delete Item")
-            # (Keeping delete simple for now)
             d1, d2, d3 = st.columns([2, 2, 1])
+            
             del_cat = d1.selectbox("Category", fixed_cats, key="del_cat")
             del_data = supabase.table("material_definitions").select("*").eq("category", del_cat).execute().data
+            
             if del_data:
                 del_names = [i['item_name'] for i in del_data]
                 item_del = d2.selectbox("Item", del_names, key="del_item")
-                if d3.button("Delete"):
+                if d3.button("Delete Selected"):
                     supabase.table("material_definitions").delete().eq("category", del_cat).eq("item_name", item_del).execute()
                     st.success("Deleted")
                     time.sleep(1)
                     st.rerun()
+            else:
+                d2.info("No items found.")
