@@ -192,7 +192,10 @@ else:
         else:
             st.subheader(f"Purchase Order: {type_selector}")
             
-            # SPECIAL LOGIC FOR MATERIALS: Fetch from DB
+            # --- LOGIC FOR MATERIALS ---
+        else:
+            st.subheader(f"Purchase Order: {type_selector}")
+            
             if type_selector == "Materials":
                 material_cats = [
                     "Packaging Materials", "Maintenance Materials", "Office Materials",
@@ -200,51 +203,64 @@ else:
                     "Food & Kitchen", "Other"
                 ]
                 
-                st.subheader("Material Details")
+                st.subheader("Material Selection")
                 
-                # --- PART 1: SELECTORS (OUTSIDE THE FORM) ---
-                # We put these outside so they update instantly when you change them
+                # 1. Select Category & Item OUTSIDE form
                 c_cat, c_item = st.columns(2)
+                selected_mat_cat = c_cat.selectbox("Category", material_cats)
                 
-                selected_mat_cat = c_cat.selectbox("Material Category", material_cats)
-                
-                # Dynamic Fetch based on the live selection above
                 try:
-                    response = supabase.table("material_definitions").select("item_name").eq("category", selected_mat_cat).execute()
-                    item_list = [row['item_name'] for row in response.data]
+                    # Fetch FULL details, not just name
+                    response = supabase.table("material_definitions").select("*").eq("category", selected_mat_cat).execute()
+                    items_data = response.data
+                    item_names = [row['item_name'] for row in items_data]
                 except:
-                    item_list = []
+                    items_data = []
+                    item_names = []
 
-                if item_list:
-                    item_name = c_item.selectbox("Select Item", item_list)
+                if item_names:
+                    selected_item_name = c_item.selectbox("Select Item", item_names)
+                    
+                    # Find the specific row data for the selected item
+                    selected_item_data = next((item for item in items_data if item["item_name"] == selected_item_name), None)
+                    
+                    # --- DISPLAY SPECS (Read Only) ---
+                    if selected_item_data:
+                        with st.expander("ℹ️ View Item Specs", expanded=True):
+                            sp1, sp2, sp3 = st.columns(3)
+                            sp1.write(f"**Material:** {selected_item_data.get('mat_type', '-')}")
+                            sp2.write(f"**Use:** {selected_item_data.get('use_case', '-')}")
+                            sp3.write(f"**Other:** {selected_item_data.get('other_specs', '-')}")
+                            
+                            st.caption("Outer Dims (cm)")
+                            st.write(f"{selected_item_data.get('dim_outer_l')} x {selected_item_data.get('dim_outer_w')} x {selected_item_data.get('dim_outer_d')}")
+
                 else:
-                    c_item.warning(f"No items found for {selected_mat_cat}.")
-                    item_name = c_item.text_input("Type Item Name manually")
+                    c_item.warning("No items defined.")
+                    selected_item_name = c_item.text_input("Manual Item Name")
 
-                # --- PART 2: DATA ENTRY (INSIDE THE FORM) ---
-                # We keep these inside so the app doesn't reload while you type the supplier name
+                # 2. Purchase Details INSIDE form
                 with st.form("material_form"):
                     supplier = st.text_input("Supplier")
-                    
                     c3, c4 = st.columns(2)
                     qty = c3.number_input("Quantity", min_value=1.0, value=1.0)
-                    price = c4.number_input("Total Estimated Cost (TL)", min_value=0.0)
+                    price = c4.number_input("Total Cost (TL)", min_value=0.0)
                     
-                    submit_mat = st.form_submit_button("✅ Create Material Order")
+                    submit_mat = st.form_submit_button("✅ Create Order")
                     
                     if submit_mat:
                         payload = {
                             "category": "Materials",
                             "supplier": supplier,
-                            "item_type": item_name,     # The item we picked outside
-                            "item_sub_type": selected_mat_cat, # The category we picked outside
+                            "item_type": selected_item_name,
+                            "item_sub_type": selected_mat_cat,
                             "qty_ordered": qty,
                             "total_value": price,
                             "status": "Pending Arrival",
                             "created_by": st.session_state.user.email
                         }
                         insert_record("purchases", payload)
-                        st.success("Material Order Saved!")
+                        st.success("Order Saved!")
             # LOGIC FOR MACHINES & SERVICES
             else:
                 with st.form("general_form"):
