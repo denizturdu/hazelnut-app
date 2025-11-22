@@ -76,7 +76,7 @@ else:
 
                 c7, c8, c9 = st.columns(3)
                 reg_type = c7.selectbox("Registration Type", ["Purchased", "Loaned (Emanet)"])
-                location = c8.selectbox("Place of Registration", ["Factory", "Field", "Store"])
+                location = c8.selectbox("Place of Delivery", ["Factory", "Field", "Store"])
                 hazelnut_type = c9.selectbox("Hazelnut Variety", ["Karışık", "Giresun Tombul", "Çakıldak", "Kara", "Sivri", "Palaz", "Badem", "Foşa", "Yomra"])
                 
                 st.markdown("---")
