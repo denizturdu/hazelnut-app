@@ -333,9 +333,6 @@ else:
     elif module == "4. Inventory":
         st.title("📦 Live Inventory")
         
-
-[Image of inventory database schema]
-
         # 1. Fetch all movements
         moves = supabase.table("stock_movements").select("*").execute().data
         df_moves = pd.DataFrame(moves)
