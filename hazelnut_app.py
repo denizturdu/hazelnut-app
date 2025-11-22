@@ -61,18 +61,18 @@ else:
                 st.subheader("1. Supplier & Origin (Kimlik)")
                 c1, c2, c3 = st.columns(3)
                 supplier = c1.text_input("Supplier Name")
-                sup_type = c2.selectbox("Supplier Type", ["Farmer", "Merchant", "Company"])
+                sup_type = c2.selectbox("Supplier Type", ["Farmer", "Merchant", "Factory"])
                 id_num = c3.text_input("ID Number (TCKN/VKN)")
                 
                 c4, c5, c6 = st.columns(3)
                 city = c4.text_input("City/Village")
                 contact = c5.text_input("Phone Number")
-                cert_status = c6.selectbox("Certification", ["None", "Organic", "Rainforest Alliance", "Avella"])
+                cert_status = c6.selectbox("Certification", ["None", "Organic", "Rainforest Alliance", "Avella", "Tekfindik"])
 
                 c7, c8, c9 = st.columns(3)
                 reg_type = c7.selectbox("Registration Type", ["Purchased", "Loaned (Emanet)"])
                 location = c8.selectbox("Place of Registration", ["Factory", "Field", "Store"])
-                hazelnut_type = c9.selectbox("Hazelnut Type", ["Levant", "Giresun", "Akçakoca"])
+                hazelnut_type = c9.selectbox("Hazelnut Type", [ "Karışık","Giresun Tombul","Çakıldak","Kara","Sivri","Palaz","Badem","Foşa","Yomra"])
                 
                 st.markdown("---")
                 st.subheader("2. Quality & Randıman (Eksper)")
