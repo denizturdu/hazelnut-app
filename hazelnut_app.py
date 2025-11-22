@@ -17,27 +17,29 @@ def calculate_randiman(sample_weight, good_kernel, shrivelled_kernel):
     except:
         return 0.0
 
-# --- YARDIMCI: EKSTRA ORAN HESAPLAYICI ---
-def calculate_extra_rates(good, shriv, vis_rot, hid_rot, tumor):
-    # Toplam İç Ağırlığı
+# --- YARDIMCI: EKSTRA ORAN HESAPLAYICI (Gelişmiş) ---
+def calculate_extra_rates(sample_weight, good, shriv, vis_rot, hid_rot, tumor, size1, undersize):
+    # Kalite oranları (Çürük, Buruşuk vb.) genellikle "Toplam İç Ağırlığına" göre hesaplanır.
     total_kernel = good + shriv + vis_rot + hid_rot + tumor
     
-    if total_kernel == 0:
-        return 0.0, 0.0, 0.0, 0.0
+    # Boylama oranları (13mm+, 9mm-) genellikle "Kabuklu Numune Ağırlığına" veya "Toplam İç Ağırlığına" göre değişebilir.
+    # Genelde randıman analizinde boylama oranları, Toplam İç Ağırlık üzerinden yüzdesel verilir.
+    # Eğer fabrikada farklı kullanılıyorsa burayı düzeltebiliriz. Varsayılan: Toplam İç üzerinden.
+    base_weight = total_kernel if total_kernel > 0 else 1
     
     try:
-        # 1. Urlu Oranı
-        tumor_rate = (tumor / total_kernel) * 100
-        # 2. Buruşuk Oranı
-        shriv_rate = (shriv / total_kernel) * 100
-        # 3. Görünür Çürük Oranı
-        vis_rot_rate = (vis_rot / total_kernel) * 100
-        # 4. Gizli Çürük Oranı
-        hid_rot_rate = (hid_rot / total_kernel) * 100
+        tumor_rate = (tumor / base_weight) * 100
+        shriv_rate = (shriv / base_weight) * 100
+        vis_rot_rate = (vis_rot / base_weight) * 100
+        hid_rot_rate = (hid_rot / base_weight) * 100
         
-        return tumor_rate, shriv_rate, vis_rot_rate, hid_rot_rate
+        # Boylama Oranları
+        size1_rate = (size1 / base_weight) * 100
+        undersize_rate = (undersize / base_weight) * 100
+        
+        return tumor_rate, shriv_rate, vis_rot_rate, hid_rot_rate, size1_rate, undersize_rate
     except:
-        return 0.0, 0.0, 0.0, 0.0
+        return 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
 
 # --- GİRİŞ SİSTEMİ ---
 if 'user' not in st.session_state:
@@ -119,28 +121,33 @@ else:
                 hid_rot = d2.number_input("Gizli Çürük (g)", value=0.0)
                 tumor = d3.number_input("Ur (g)", value=0.0)
 
+                # --- GÜNCELLENEN ETİKETLER (GRAM OLARAK) ---
                 s1, s2, s3 = st.columns(3)
-                size_1 = s1.number_input("1. Numara (13 mm üzeri (%) )", value=0.0)
-                under_size = s2.number_input("Elek Altı (9 mm altı (%) )", value=0.0)
+                size_1_g = s1.number_input("1. Numara İç - 13 mm üzeri (g)", value=0.0)
+                undersize_g = s2.number_input("Elek Altı İç - 9 mm altı (g)", value=0.0)
                 moisture = s3.number_input("Nem (%)", 0.0, 20.0, 5.0)
                 
-                # --- HESAPLAMA BUTONU VE GÖSTERGELER ---
                 calc_pressed = st.form_submit_button("🔄 Analiz Sonuçlarını Hesapla")
                 
                 # Hesaplamalar
                 randiman = calculate_randiman(sample_w, good_k, shriv_k)
-                tumor_ratio, shriv_ratio, vis_rot_ratio, hid_rot_ratio = calculate_extra_rates(good_k, shriv_k, vis_rot, hid_rot, tumor)
+                # Yeni hesaplama fonksiyonu (Boylama dahil)
+                tumor_r, shriv_r, vis_rot_r, hid_rot_r, size1_r, under_r = calculate_extra_rates(
+                    sample_w, good_k, shriv_k, vis_rot, hid_rot, tumor, size_1_g, undersize_g
+                )
                 
-                # Sonuçları Göster (İki satıra böldük)
+                # Sonuçları Göster
                 st.markdown("##### Analiz Sonuçları")
                 res1, res2, res3 = st.columns(3)
                 res1.metric("Randıman", f"{randiman:.2f}%")
-                res2.metric("Buruşuk Oranı", f"{shriv_ratio:.2f}%")
-                res3.metric("Urlu Oranı", f"{tumor_ratio:.2f}%")
+                res2.metric("13mm+ Oranı", f"{size1_r:.2f}%")
+                res3.metric("Elek Altı Oranı", f"{under_r:.2f}%")
                 
-                res4, res5 = st.columns(2)
-                res4.metric("Görünen Çürük Oranı", f"{vis_rot_ratio:.2f}%")
-                res5.metric("Gizli Çürük Oranı", f"{hid_rot_ratio:.2f}%")
+                res4, res5, res6, res7 = st.columns(4)
+                res4.metric("Buruşuk", f"{shriv_r:.2f}%")
+                res5.metric("Urlu", f"{tumor_r:.2f}%")
+                res6.metric("Görünen Çürük", f"{vis_rot_r:.2f}%")
+                res7.metric("Gizli Çürük", f"{hid_rot_r:.2f}%")
 
                 st.markdown("---")
                 st.subheader("3. Finansal Bilgiler")
@@ -184,10 +191,14 @@ else:
                         "reg_type": reg_type, "location": location, "item_type": hazelnut_type,
                         "sample_weight": sample_w, "good_kernel": good_k, "shrivelled_kernel": shriv_k,
                         "calculated_randiman": randiman, "visible_rotten": vis_rot, "hidden_rotten": hid_rot,
-                        "tumorous": tumor, "size_1_percent": size_1, "undersize_percent": under_size, "moisture": moisture,
+                        "tumorous": tumor, 
                         
+                        # GRAMS INSTEAD OF PERCENT
+                        "size_1_percent": size_1_g,     # We store the gram value here or update DB col name later
+                        "undersize_percent": undersize_g, # Storing gram value
+                        
+                        "moisture": moisture,
                         "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag,
-
                         "qty_ordered": net_weight, "document_number": doc_num, "gross_price_50": gross_price,
                         "net_price_50": net_price_50, "actual_unit_price": unit_price, "total_value": total_val,
                         "payment_amount": pay_amount, "payment_method": pay_method, "remaining_balance": remaining
