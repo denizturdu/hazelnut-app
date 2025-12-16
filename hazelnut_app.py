@@ -1,37 +1,24 @@
 import streamlit as st
 import pandas as pd
-from db_utils import supabase, login_user, register_user, insert_record
+from db_utils import supabase, login_user, register_user, insert_record, get_all_users, update_user_permissions
 import time
 
 st.set_page_config(page_title="Fındık Fabrikası Yönetimi", layout="wide")
 
 # --- SESSION STATE SETUP ---
-if 'user' not in st.session_state:
-    st.session_state.user = None
-if 'role' not in st.session_state:
-    st.session_state.role = None
+if 'user' not in st.session_state: st.session_state.user = None
+if 'role' not in st.session_state: st.session_state.role = None
 
-# --- HELPER FUNCTIONS ---
-def calculate_randiman(sample_w, good, shriv):
-    if sample_w == 0: return 0.0
-    return ((good + (shriv / 2)) / sample_w) * 100
+# --- CONSTANTS ---
+# Harita: Modül ID -> Menü Adı
+MODULE_MAP = {
+    1: "1. Şube Ürün Girişi",
+    2: "2. Fabrika Ürün Girişi",
+    3: "3. Mal Kabul (Kantar)",
+    4: "4. Yönetici Ayarları",
+    5: "5. Stok Takibi"
+}
 
-def calculate_percentages(base_w, inputs):
-    results = {}
-    if base_w == 0: return {k: 0.0 for k in inputs}
-    for k, v in inputs.items():
-        results[k] = (v / base_w) * 100
-    return results
-
-def calculate_detailed_rates(base_weight, inputs):
-    results = {}
-    if base_weight == 0: return {k: 0.0 for k in inputs}
-    for key, val in inputs.items():
-        if "adet" in key or "tane" in key: results[key] = val 
-        else: results[key] = (val / base_weight) * 100
-    return results
-
-# --- LISTS ---
 CALIBRE_OPTIONS = [
     "Mixed Size", "21mm+", "20mm+", "19mm+", "18mm+", "17mm+", "16mm+", 
     "15-16mm", "14-15mm", "13-15mm", "13-14mm", "12-14mm", "12-13mm", 
@@ -42,8 +29,27 @@ CALIBRE_OPTIONS = [
     "30μ", "31μ", "32μ", "33μ", "34μ", "35μ"
 ]
 
+# --- HELPER FUNCTIONS ---
+def calculate_randiman(sample_w, good, shriv):
+    if sample_w == 0: return 0.0
+    return ((good + (shriv / 2)) / sample_w) * 100
+
+def calculate_percentages(base_w, inputs):
+    results = {}
+    if base_w == 0: return {k: 0.0 for k in inputs}
+    for k, v in inputs.items(): results[k] = (v / base_w) * 100
+    return results
+
+def calculate_detailed_rates(base_weight, inputs):
+    results = {}
+    if base_weight == 0: return {k: 0.0 for k in inputs}
+    for key, val in inputs.items():
+        if "adet" in key or "tane" in key: results[key] = val 
+        else: results[key] = (val / base_weight) * 100
+    return results
+
 # ==========================================
-# 🔐 AUTHENTICATION PAGE (ROUTER START)
+# 🔐 AUTHENTICATION PAGE (Login Screen)
 # ==========================================
 if not st.session_state.user:
     st.title("🌰 Avella Giriş Paneli")
@@ -73,9 +79,10 @@ if not st.session_state.user:
         new_pass = st.text_input("Şifre Belirleyin", type="password", key="reg_pass")
         new_pass_confirm = st.text_input("Şifre Tekrar", type="password", key="reg_pass2")
         
+        # Auto-detect employee based on email domain
         reg_role = "customer"
         if "@avella" in new_email: 
-            st.info("Avella personeli olarak algılandı.")
+            st.info("Avella personeli olarak algılandı (Otomatik Onay).")
             reg_role = "employee"
 
         if st.button("Kayıt Ol"):
@@ -94,7 +101,8 @@ if not st.session_state.user:
 # 🚀 MAIN APP (ROUTER LOGIC)
 # ==========================================
 else:
-    st.sidebar.info(f"👤 {st.session_state.user['email']}")
+    user = st.session_state.user
+    st.sidebar.info(f"👤 {user['email']}")
     st.sidebar.caption(f"Rol: {st.session_state.role.upper()}")
     
     if st.sidebar.button("Çıkış Yap"):
@@ -103,23 +111,30 @@ else:
         st.rerun()
 
     # ----------------------------------------------------------------
-    # SCENARIO 1: EMPLOYEE (THE FULL FACTORY APP)
+    # SCENARIO 1: EMPLOYEE (FACTORY APP WITH PERMISSIONS)
     # ----------------------------------------------------------------
     if st.session_state.role == 'employee':
         
-        menu_options = [
-            "1. Şube Ürün Girişi", 
-            "2. Fabrika Ürün Girişi", 
-            "3. Mal Kabul (Kantar)", 
-            "4. Yönetici Ayarları", 
-            "5. Stok Takibi"
-        ]
-        module = st.sidebar.radio("Fabrika Menüsü", menu_options)
+        # 1. PERMISSION CHECK: Get list of allowed module IDs
+        allowed_ids = user.get('allowed_modules', [])
+        if allowed_ids is None: allowed_ids = []
+        
+        # 2. GENERATE DYNAMIC MENU
+        available_menu_names = []
+        for mod_id in sorted(allowed_ids):
+            if mod_id in MODULE_MAP:
+                available_menu_names.append(MODULE_MAP[mod_id])
+        
+        if not available_menu_names:
+            st.error("🚫 Yetkili olduğunuz modül bulunmamaktadır. Lütfen yönetici ile görüşün.")
+            st.stop()
+            
+        module = st.sidebar.radio("Fabrika Menüsü", available_menu_names)
 
-        # ==========================
-        # MODÜL 1: ŞUBE ÜRÜN GİRİŞİ
-        # ==========================
-        if module == "1. Şube Ürün Girişi":
+        # =========================================================
+        # MODÜL 1: ŞUBE ÜRÜN GİRİŞİ (Only if allowed)
+        # =========================================================
+        if module == MODULE_MAP[1]:
             st.title("Modül 1: Şube Ürün Girişi")
             hazelnut_cat = "Kabuklu Fındık"
             st.info("Bu modül Şubelerden yapılan **Kabuklu Fındık** alımları içindir.")
@@ -155,15 +170,16 @@ else:
                     st.markdown("**Fiziksel Analiz (Eksper)**")
                     w_sample = st.number_input("Kabuklu Numune Ağırlığı (g)", value=250.0)
                     
-                    def show_percent(val, base):
-                        if base > 0: return f"%{(val/base)*100:.2f}"
-                        return "%0.00"
-
                     w_good = st.number_input("Sağlam İç (g)", 0.0)
                     w_shriv = st.number_input("Buruşuk İç (g)", 0.0)
                     w_vis_rot = st.number_input("Görünen Çürük (g)", 0.0)
                     w_hid_rot = st.number_input("Gizli Çürük (g)", 0.0)
                     w_tumor = st.number_input("Ur (g)", 0.0)
+                    
+                    # Anlık Yüzde Gösterimi
+                    def show_percent(val, base):
+                        if base > 0: return f"%{(val/base)*100:.2f}"
+                        return "%0.00"
                     
                     temp_total_inner = w_good + w_shriv + w_vis_rot + w_hid_rot + w_tumor
                     base_calc = temp_total_inner if temp_total_inner > 0 else 1
@@ -232,14 +248,13 @@ else:
                     insert_record("purchases", payload)
                     st.success("Şube Girişi Kaydedildi!")
 
-        # ==========================
-        # MODÜL 2: FABRİKA ÜRÜN GİRİŞİ
-        # ==========================
-        elif module == "2. Fabrika Ürün Girişi":
+        # =========================================================
+        # MODÜL 2: FABRİKA ÜRÜN GİRİŞİ (Only if allowed)
+        # =========================================================
+        elif module == MODULE_MAP[2]:
             st.title("Modül 2: Fabrika Ürün Girişi")
             tab_findik, tab_malzeme, tab_genel = st.tabs(["🌰 Fındık Alımı", "📦 Malzeme Alımı", "⚙️ Makine & Hizmet"])
             
-            # --- TAB 1: FINDIK ---
             with tab_findik:
                 hazelnut_cat = st.selectbox("Fındık Kategorisi", ["Kabuklu Fındık", "İç Fındık", "İşlenmiş Fındık"], key="fab_findik_cat")
                 
@@ -345,12 +360,15 @@ else:
                             for k, v in calc_inputs.items():
                                 pct = (v / w_sample) * 100
                                 if v > 0: report_data.append({"Parametre": k, "Girdi (g)": f"{v} g", "Sonuç": f"%{pct:.2f}"})
+                            
                             if hazelnut_cat == "Kabuklu Fındık":
                                 if size_1_g > 0: report_data.append({"Parametre": "1. Numara (13mm+)", "Girdi (g)": f"{size_1_g} g", "Sonuç": f"%{(size_1_g/w_sample)*100:.2f}"})
                                 if undersize_g > 0: report_data.append({"Parametre": "Elek Altı (9mm-)", "Girdi (g)": f"{undersize_g} g", "Sonuç": f"%{(undersize_g/w_sample)*100:.2f}"})
+
                             if val_moist > 0: report_data.append({"Parametre": "Nem", "Girdi (g)": "-", "Sonuç": f"%{val_moist}"})
                             if l_ffa > 0: report_data.append({"Parametre": "FFA", "Girdi (g)": "-", "Sonuç": f"%{l_ffa}"})
                             if l_perox > 0: report_data.append({"Parametre": "Peroksit", "Girdi (g)": "-", "Sonuç": f"{l_perox} meq"})
+                        
                         if report_data: st.dataframe(pd.DataFrame(report_data), use_container_width=True)
                         else: st.warning("Rapor için değer giriniz.")
 
@@ -390,7 +408,6 @@ else:
                     pay_method = f3.selectbox("Ödeme Yöntemi", ["Nakit", "Banka", "Çek"])
                     if reg_type != "Emanet": st.metric("Kalan Bakiye", f"{total_val - pay_amount:,.2f} TL")
 
-                    # --- FIXED INDENTATION FOR SUBMIT BUTTON ---
                     if st.form_submit_button("✅ Fabrika Girişini Kaydet"):
                         payload = {
                             "created_by": st.session_state.user['email'], "status": "Pending Arrival",
@@ -419,7 +436,7 @@ else:
                         insert_record("purchases", payload)
                         st.success("Fabrika Girişi Kaydedildi!")
 
-            # --- TAB 2: MALZEME ALIMI ---
+            # --- TAB 2: MALZEME ---
             with tab_malzeme:
                 st.subheader("Malzeme Seçimi")
                 material_cats = ["Ambalaj Malzemeleri", "Bakım Malzemeleri", "Ofis Malzemeleri", "Temizlik Malzemeleri", "Eşantiyon & Hediye", "İş Kıyafetleri", "Gıda ve Mutfak", "Diğer"]
@@ -469,96 +486,131 @@ else:
                         insert_record("purchases", {"category": general_type, "supplier": supplier, "item_type": desc, "qty_ordered": qty, "total_value": price, "status": "Pending Arrival", "created_by": st.session_state.user['email']})
                         st.success("Kaydedildi!")
 
-    # ==========================
-    # MODÜL 3: MAL KABUL
-    # ==========================
-    elif module == "3. Mal Kabul (Kantar)":
-        st.title("Modül 3: Mal Kabul (Kantar)")
-        try:
-            response = supabase.table("purchases").select("*").eq("status", "Pending Arrival").execute()
-            pending_df = pd.DataFrame(response.data)
-            if not pending_df.empty:
-                st.dataframe(pending_df[["id", "supplier", "item_type", "qty_ordered", "location"]])
-                po_ids = pending_df['id'].tolist()
-                selected_id = st.selectbox("Sipariş Seç (ID)", po_ids)
-                row = pending_df[pending_df['id'] == selected_id].iloc[0]
-                st.info(f"Giriş: {row['item_type']} - {row['supplier']}")
-                with st.form("intake"):
-                    c1, c2 = st.columns(2)
-                    plate = c1.text_input("Plaka")
-                    waybill = c2.text_input("İrsaliye")
-                    qty = st.number_input("Kantar Net", value=float(row['qty_ordered'] or 0))
-                    loc = st.text_input("Depo")
-                    if st.form_submit_button("Onayla"):
-                        supabase.table("purchases").update({"status": "Received"}).eq("id", selected_id).execute()
-                        insert_record("intake_log", {"po_id": int(selected_id), "plate_number": plate, "waybill_no": waybill, "received_qty": qty, "location_in_warehouse": loc, "created_by": st.session_state.user['email']})
-                        insert_record("stock_movements", {"item_name": row['item_type'], "category": row.get('category'), "quantity": qty, "move_type": "Intake", "location": loc, "created_by": st.session_state.user['email']})
-                        st.success("Giriş Yapıldı!"); time.sleep(1); st.rerun()
-            else: st.info("Bekleyen yok.")
-        except Exception as e: st.error(f"Hata: {e}")
+        # ==========================
+        # MODÜL 3: MAL KABUL
+        # ==========================
+        elif module == MODULE_MAP[3]:
+            st.title("Modül 3: Mal Kabul (Kantar)")
+            try:
+                response = supabase.table("purchases").select("*").eq("status", "Pending Arrival").execute()
+                pending_df = pd.DataFrame(response.data)
+                if not pending_df.empty:
+                    st.dataframe(pending_df[["id", "supplier", "item_type", "qty_ordered", "location"]])
+                    po_ids = pending_df['id'].tolist()
+                    selected_id = st.selectbox("Sipariş Seç (ID)", po_ids)
+                    row = pending_df[pending_df['id'] == selected_id].iloc[0]
+                    st.info(f"Giriş: {row['item_type']} - {row['supplier']}")
+                    with st.form("intake"):
+                        c1, c2 = st.columns(2)
+                        plate = c1.text_input("Plaka")
+                        waybill = c2.text_input("İrsaliye")
+                        qty = st.number_input("Kantar Net", value=float(row['qty_ordered'] or 0))
+                        loc = st.text_input("Depo")
+                        if st.form_submit_button("Onayla"):
+                            supabase.table("purchases").update({"status": "Received"}).eq("id", selected_id).execute()
+                            insert_record("intake_log", {"po_id": int(selected_id), "plate_number": plate, "waybill_no": waybill, "received_qty": qty, "location_in_warehouse": loc, "created_by": st.session_state.user['email']})
+                            insert_record("stock_movements", {"item_name": row['item_type'], "category": row.get('category'), "quantity": qty, "move_type": "Intake", "location": loc, "created_by": st.session_state.user['email']})
+                            st.success("Giriş Yapıldı!"); time.sleep(1); st.rerun()
+                else: st.info("Bekleyen yok.")
+            except Exception as e: st.error(f"Hata: {e}")
 
-    # ==========================
-    # MODÜL 4: YÖNETİCİ
-    # ==========================
-    elif module == "4. Yönetici Ayarları":
-        st.title("🛠️ Yönetici Ayarları")
-        tab1, tab2 = st.tabs(["Malzeme Tanımları", "Kullanıcılar"])
-        with tab1:
-            cats = ["Ambalaj Malzemeleri", "Bakım Malzemeleri", "Ofis Malzemeleri", "Temizlik Malzemeleri", "Eşantiyon & Hediye", "İş Kıyafetleri", "Gıda ve Mutfak", "Diğer"]
-            units = ['adet', 'gr', 'kg', 'bobin', 'rulo', 'paket', 'deste', 'palet', 'litre', 'mililitre', 'metreküp', 'desimetreküp', 'santimetreküp', 'metre', 'desimetre', 'santimetre', 'milimetre', 'bigbag', 'kamyon', 'tır', 'tank', 'metrekare', 'santimetrekare', 'ar', 'dekar', 'hektar']
-            with st.expander("Listeyi Gör"):
-                data = supabase.table("material_definitions").select("*").execute().data
-                st.dataframe(pd.DataFrame(data), use_container_width=True)
-            st.markdown("---")
-            st.write("### ➕ Ekle / ✏️ Düzenle / 🗑️ Sil")
-            action = st.radio("İşlem", ["Ekle", "Düzenle", "Sil"], horizontal=True)
-            if action == "Ekle":
-                with st.form("add"):
-                    c1, c2 = st.columns(2)
-                    cat = c1.selectbox("Kategori", cats)
-                    name = c2.text_input("Ad")
-                    u1, u2 = st.columns(2)
-                    unit = u1.selectbox("Birim", units)
-                    uq = u2.number_input("Birim İçi Adet", 1.0)
-                    nt = st.text_area("Notlar")
-                    o1, o2, o3 = st.columns(3)
-                    dim_o = o1.text_input("Dış Boyutlar")
-                    dim_i = o2.text_input("İç Boyutlar")
-                    w_g = o3.number_input("Ağırlık (g)", 0.0)
-                    g1, g2, g3 = st.columns(3)
-                    use = g1.text_input("Kullanım"); mat = g2.text_input("Materyal"); oth = g3.text_input("Diğer")
-                    if st.form_submit_button("Kaydet"):
-                        insert_record("material_definitions", {"category": cat, "item_name": name, "sales_unit": unit, "unit_quantity": uq, "notes": nt, "dim_outer": dim_o, "dim_inner": dim_i, "unit_weight_g": w_g, "use_case": use, "mat_type": mat, "other_specs": oth})
-                        st.success("Eklendi!")
-            elif action == "Düzenle":
-                sel_cat = st.selectbox("Kategori", cats)
-                items = supabase.table("material_definitions").select("*").eq("category", sel_cat).execute().data
-                if items:
-                    target = st.selectbox("Malzeme", [i['item_name'] for i in items])
-                    row = next(i for i in items if i['item_name'] == target)
-                    with st.form("edit"):
-                        new_name = st.text_input("Ad", row['item_name'])
-                        e1, e2, e3 = st.columns(3)
-                        emat = e1.text_input("Materyal", row.get('mat_type'))
-                        euse = e2.text_input("Kullanım", row.get('use_case'))
-                        eunit = e3.selectbox("Birim", units, index=units.index(row.get('sales_unit')) if row.get('sales_unit') in units else 0)
-                        enote = st.text_area("Notlar", row.get('notes'))
-                        if st.form_submit_button("Güncelle"):
-                            supabase.table("material_definitions").update({"item_name": new_name, "mat_type": emat, "use_case": euse, "sales_unit": eunit, "notes": enote}).eq("id", row['id']).execute()
-                            st.success("Güncellendi!")
-            elif action == "Sil":
-                sel_cat = st.selectbox("Kategori (Sil)", cats)
-                items = supabase.table("material_definitions").select("*").eq("category", sel_cat).execute().data
-                if items:
-                    target = st.selectbox("Silinecek", [i['item_name'] for i in items])
-                    if st.button("Sil"):
-                        supabase.table("material_definitions").delete().eq("item_name", target).execute()
-                        st.success("Silindi!")
+        # ==========================
+        # MODÜL 4: YÖNETİCİ
+        # ==========================
+        elif module == MODULE_MAP[4]:
+            st.title("🛠️ Yönetici Ayarları")
+            tab_users, tab_mat = st.tabs(["👥 Kullanıcı Yönetimi", "📦 Malzeme Tanımları"])
+            
+            with tab_users:
+                st.subheader("Kullanıcı İzinleri ve Onay")
+                all_users = get_all_users()
+                df_users = pd.DataFrame(all_users)
+                if not df_users.empty:
+                    st.dataframe(df_users[['email', 'role', 'is_approved', 'allowed_modules']], use_container_width=True)
+                    st.markdown("---")
+                    user_list = {u['email']: u for u in all_users}
+                    selected_email = st.selectbox("Kullanıcı Seç", list(user_list.keys()))
+                    if selected_email:
+                        target_user = user_list[selected_email]
+                        with st.form("edit_user_perm"):
+                            st.write(f"**Seçili:** {target_user['email']}")
+                            new_role = st.selectbox("Rol", ["customer", "employee"], index=0 if target_user['role']=='customer' else 1)
+                            new_approved = st.checkbox("Onaylı Hesap", value=target_user['is_approved'])
+                            current_modules = target_user.get('allowed_modules') or []
+                            st.caption("Erişilebilir Modüller (Sadece 'employee')")
+                            c1, c2, c3, c4, c5 = st.columns(5)
+                            m1 = c1.checkbox("1. Şube", 1 in current_modules)
+                            m2 = c2.checkbox("2. Fabrika", 2 in current_modules)
+                            m3 = c3.checkbox("3. Mal Kabul", 3 in current_modules)
+                            m4 = c4.checkbox("4. Yönetici", 4 in current_modules)
+                            m5 = c5.checkbox("5. Stok", 5 in current_modules)
+                            if st.form_submit_button("💾 Yetkileri Güncelle"):
+                                new_mod_list = []
+                                if m1: new_mod_list.append(1)
+                                if m2: new_mod_list.append(2)
+                                if m3: new_mod_list.append(3)
+                                if m4: new_mod_list.append(4)
+                                if m5: new_mod_list.append(5)
+                                if update_user_permissions(target_user['id'], new_approved, new_mod_list, new_role):
+                                    st.success("Güncellendi!"); time.sleep(1); st.rerun()
+                                else: st.error("Hata.")
+
+            with tab_mat:
+                cats = ["Ambalaj Malzemeleri", "Bakım Malzemeleri", "Ofis Malzemeleri", "Temizlik Malzemeleri", "Eşantiyon & Hediye", "İş Kıyafetleri", "Gıda ve Mutfak", "Diğer"]
+                units = ['adet', 'gr', 'kg', 'bobin', 'rulo', 'paket', 'deste', 'palet', 'litre', 'mililitre', 'metreküp', 'desimetreküp', 'santimetreküp', 'metre', 'desimetre', 'santimetre', 'milimetre', 'bigbag', 'kamyon', 'tır', 'tank', 'metrekare', 'santimetrekare', 'ar', 'dekar', 'hektar']
+                with st.expander("Listeyi Gör"):
+                    data = supabase.table("material_definitions").select("*").execute().data
+                    st.dataframe(pd.DataFrame(data), use_container_width=True)
+                st.markdown("---")
+                st.write("### ➕ Ekle / ✏️ Düzenle / 🗑️ Sil")
+                action = st.radio("İşlem", ["Ekle", "Düzenle", "Sil"], horizontal=True)
+                if action == "Ekle":
+                    with st.form("add_mat"):
+                        c1, c2 = st.columns(2)
+                        cat = c1.selectbox("Kategori", cats)
+                        name = c2.text_input("Ad")
+                        u1, u2 = st.columns(2)
+                        unit = u1.selectbox("Birim", units)
+                        uq = u2.number_input("Birim İçi Adet", 1.0)
+                        nt = st.text_area("Notlar")
+                        o1, o2, o3 = st.columns(3)
+                        dim_o = o1.text_input("Dış Boyutlar")
+                        dim_i = o2.text_input("İç Boyutlar")
+                        w_g = o3.number_input("Ağırlık (g)", 0.0)
+                        g1, g2, g3 = st.columns(3)
+                        use = g1.text_input("Kullanım"); mat = g2.text_input("Materyal"); oth = g3.text_input("Diğer")
+                        if st.form_submit_button("Kaydet"):
+                            insert_record("material_definitions", {"category": cat, "item_name": name, "sales_unit": unit, "unit_quantity": uq, "notes": nt, "dim_outer": dim_o, "dim_inner": dim_i, "unit_weight_g": w_g, "use_case": use, "mat_type": mat, "other_specs": oth})
+                            st.success("Eklendi!")
+                elif action == "Düzenle":
+                    sel_cat = st.selectbox("Kategori", cats)
+                    items = supabase.table("material_definitions").select("*").eq("category", sel_cat).execute().data
+                    if items:
+                        target = st.selectbox("Malzeme", [i['item_name'] for i in items])
+                        row = next(i for i in items if i['item_name'] == target)
+                        with st.form("edit_mat"):
+                            new_name = st.text_input("Ad", row['item_name'])
+                            e1, e2, e3 = st.columns(3)
+                            emat = e1.text_input("Materyal", row.get('mat_type'))
+                            euse = e2.text_input("Kullanım", row.get('use_case'))
+                            eunit = e3.selectbox("Birim", units, index=units.index(row.get('sales_unit')) if row.get('sales_unit') in units else 0)
+                            enote = st.text_area("Notlar", row.get('notes'))
+                            if st.form_submit_button("Güncelle"):
+                                supabase.table("material_definitions").update({"item_name": new_name, "mat_type": emat, "use_case": euse, "sales_unit": eunit, "notes": enote}).eq("id", row['id']).execute()
+                                st.success("Güncellendi!")
+                elif action == "Sil":
+                    sel_cat = st.selectbox("Kategori (Sil)", cats)
+                    items = supabase.table("material_definitions").select("*").eq("category", sel_cat).execute().data
+                    if items:
+                        target = st.selectbox("Silinecek", [i['item_name'] for i in items])
+                        if st.button("Sil"):
+                            supabase.table("material_definitions").delete().eq("item_name", target).execute()
+                            st.success("Silindi!")
 
     # ==========================
     # MODÜL 5: STOK
     # ==========================
-    elif module == "5. Stok Takibi":
+    elif module == MODULE_MAP[5]:
         st.title("📦 Stok")
         moves = supabase.table("stock_movements").select("*").execute().data
         df = pd.DataFrame(moves)
