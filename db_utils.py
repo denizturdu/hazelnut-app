@@ -1,28 +1,72 @@
 import streamlit as st
 from supabase import create_client, Client
+import bcrypt
 
-# Initialize connection
-# We use st.secrets so we don't publish passwords in the code
-@st.cache_resource
-def init_connection():
-    url = st.secrets["SUPABASE_URL"]
-    key = st.secrets["SUPABASE_KEY"]
-    return create_client(url, key)
+# --- SUPABASE CONNECTION ---
+# Secrets must be set in Streamlit Cloud -> Advanced Settings
+url = st.secrets["SUPABASE_URL"]
+key = st.secrets["SUPABASE_KEY"]
+supabase: Client = create_client(url, key)
 
-supabase = init_connection()
+# --- AUTHENTICATION FUNCTIONS ---
 
-def run_query(table_name):
-    response = supabase.table(table_name).select("*").execute()
-    return response.data
+def hash_password(password: str) -> str:
+    """Converts a plain text password into a secure hash."""
+    # bcrypt requires bytes, so we encode the string
+    pwd_bytes = password.encode('utf-8')
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(pwd_bytes, salt)
+    return hashed.decode('utf-8') # Decode back to string for storage
 
-def insert_record(table_name, data_dict):
-    response = supabase.table(table_name).insert(data_dict).execute()
-    return response
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Checks if the plain password matches the hash."""
+    return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
 
-# LOGIN FUNCTION
-def login_user(email, password):
+def register_user(email, password, role='customer'):
+    """Creates a new user in the database."""
     try:
-        response = supabase.auth.sign_in_with_password({"email": email, "password": password})
-        return response.user
+        hashed = hash_password(password)
+        
+        # Employees are auto-approved (for now, or you can change this), Customers need approval
+        is_approved = True if role == 'employee' else False
+        
+        data = {
+            "email": email,
+            "password_hash": hashed,
+            "role": role,
+            "is_approved": is_approved
+        }
+        
+        response = supabase.table("app_users").insert(data).execute()
+        return True, "Kayıt Başarılı! Onay bekleniyor."
     except Exception as e:
-        return None
+        return False, f"Hata: {e} (E-posta zaten kayıtlı olabilir)"
+
+def login_user(email, password):
+    """Verifies email/password and checks approval status."""
+    try:
+        # Fetch user by email
+        response = supabase.table("app_users").select("*").eq("email", email).execute()
+        
+        if not response.data:
+            return None, "Kullanıcı bulunamadı."
+        
+        user = response.data[0]
+        
+        # 1. Verify Password
+        if verify_password(password, user['password_hash']):
+            # 2. Check Approval
+            if user['is_approved']:
+                return user, "OK"
+            else:
+                return None, "Hesabınız henüz onaylanmadı. Lütfen yönetici ile iletişime geçin."
+        else:
+            return None, "Şifre hatalı."
+            
+    except Exception as e:
+        return None, f"Giriş hatası: {e}"
+
+# --- GENERIC DB INSERT ---
+def insert_record(table_name, payload):
+    data, count = supabase.table(table_name).insert(payload).execute()
+    return data
