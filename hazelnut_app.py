@@ -73,7 +73,6 @@ if not st.session_state.user:
         new_pass = st.text_input("Şifre Belirleyin", type="password", key="reg_pass")
         new_pass_confirm = st.text_input("Şifre Tekrar", type="password", key="reg_pass2")
         
-        # Auto-detect employee based on email domain (Optional security feature)
         reg_role = "customer"
         if "@avella" in new_email: 
             st.info("Avella personeli olarak algılandı.")
@@ -95,7 +94,6 @@ if not st.session_state.user:
 # 🚀 MAIN APP (ROUTER LOGIC)
 # ==========================================
 else:
-    # COMMON SIDEBAR HEADER
     st.sidebar.info(f"👤 {st.session_state.user['email']}")
     st.sidebar.caption(f"Rol: {st.session_state.role.upper()}")
     
@@ -149,20 +147,29 @@ else:
                 hazelnut_type = c9.selectbox("Fındık Çeşidi", ["Karışık", "Giresun Tombul", "Çakıldak", "Kara", "Sivri", "Palaz", "Badem", "Foşa", "Yomra"])
                 
                 st.markdown("---")
-                
-                # Standart Kabuklu Form
+                price_gross=0.0; price_net_deducted=0.0; val_randiman=0.0
+
                 st.subheader("2. Kalite, Miktar ve Fiyatlandırma")
                 col_q1, col_q2 = st.columns([1, 1])
                 with col_q1:
                     st.markdown("**Fiziksel Analiz (Eksper)**")
                     w_sample = st.number_input("Kabuklu Numune Ağırlığı (g)", value=250.0)
                     
+                    def show_percent(val, base):
+                        if base > 0: return f"%{(val/base)*100:.2f}"
+                        return "%0.00"
+
                     w_good = st.number_input("Sağlam İç (g)", 0.0)
                     w_shriv = st.number_input("Buruşuk İç (g)", 0.0)
                     w_vis_rot = st.number_input("Görünen Çürük (g)", 0.0)
                     w_hid_rot = st.number_input("Gizli Çürük (g)", 0.0)
                     w_tumor = st.number_input("Ur (g)", 0.0)
                     
+                    temp_total_inner = w_good + w_shriv + w_vis_rot + w_hid_rot + w_tumor
+                    base_calc = temp_total_inner if temp_total_inner > 0 else 1
+                    if temp_total_inner > 0:
+                        st.caption(f"📊 Anlık Oranlar: Buruşuk: {show_percent(w_shriv, base_calc)} | G.Çürük: {show_percent(w_vis_rot, base_calc)} | Gizli Çürük: {show_percent(w_hid_rot, base_calc)} | Ur: {show_percent(w_tumor, base_calc)}")
+
                     s1, s2 = st.columns(2)
                     w_over = s1.number_input("1. Numara İç - 13 mm üzeri (g)", 0.0)
                     w_under = s2.number_input("Elek Altı İç - 9 mm altı (g)", 0.0)
@@ -185,12 +192,14 @@ else:
 
                 st.markdown("---")
                 calc_pressed = st.form_submit_button("🔄 Randıman ve Fiyat Hesapla")
+                
                 val_randiman = calculate_randiman(w_sample, w_good, w_shriv)
+                pcts = calculate_percentages(base_calc, {"Buruşuk": w_shriv, "Ur": w_tumor, "Görünen Çürük": w_vis_rot, "Gizli Çürük": w_hid_rot, "13mm+": w_over, "Elek Altı": w_under})
                 net_price_50 = price_gross / 1.0245
                 unit_price = net_price_50 * (val_randiman / 50.0)
                 total_val = unit_price * net_weight
                 
-                if calc_pressed or True:
+                if calc_pressed:
                     st.markdown("##### Analiz Sonuçları")
                     st.metric("Randıman", f"%{val_randiman:.2f}")
                     if reg_type != "Emanet":
@@ -258,12 +267,10 @@ else:
                     
                     st.markdown("---")
                     
-                    # 2. DETAYLI KALİTE ANALİZİ (ORTAK YAPIDA)
+                    # 2. DETAYLI KALİTE ANALİZİ
                     st.subheader("2. Detaylı Kalite Analizi (Laboratuvar)")
                     st.markdown("##### A. Temel & Kimyasal Analiz")
                     k1, k2, k3 = st.columns(3)
-                    
-                    # Etiket
                     label_sample = "Kabuklu Numune Ağırlığı (g)" if hazelnut_cat == "Kabuklu Fındık" else "İç Numune Ağırlığı (g)"
                     w_sample = k1.number_input(label_sample, value=250.0 if hazelnut_cat == "Kabuklu Fındık" else 100.0)
                     lab_cal = k2.selectbox("Kalibre", CALIBRE_OPTIONS)
@@ -304,7 +311,6 @@ else:
                     w_shell = m2.number_input("Kabuk (g)", 0.0)
                     c_foreign = m3.number_input("Yabancı Madde (tane)", 0)
                     
-                    # EXTRA FIELDS FOR KABUKLU
                     size_1_g = 0.0
                     undersize_g = 0.0
                     if hazelnut_cat == "Kabuklu Fındık":
@@ -322,7 +328,6 @@ else:
 
                     st.markdown("---")
                     calc_btn = st.form_submit_button("📊 Rapor Oluştur")
-                    
                     val_randiman = calculate_randiman(w_sample, w_good, w_shriv)
                     
                     if calc_btn:
@@ -340,15 +345,12 @@ else:
                             for k, v in calc_inputs.items():
                                 pct = (v / w_sample) * 100
                                 if v > 0: report_data.append({"Parametre": k, "Girdi (g)": f"{v} g", "Sonuç": f"%{pct:.2f}"})
-                            
                             if hazelnut_cat == "Kabuklu Fındık":
                                 if size_1_g > 0: report_data.append({"Parametre": "1. Numara (13mm+)", "Girdi (g)": f"{size_1_g} g", "Sonuç": f"%{(size_1_g/w_sample)*100:.2f}"})
                                 if undersize_g > 0: report_data.append({"Parametre": "Elek Altı (9mm-)", "Girdi (g)": f"{undersize_g} g", "Sonuç": f"%{(undersize_g/w_sample)*100:.2f}"})
-
                             if val_moist > 0: report_data.append({"Parametre": "Nem", "Girdi (g)": "-", "Sonuç": f"%{val_moist}"})
                             if l_ffa > 0: report_data.append({"Parametre": "FFA", "Girdi (g)": "-", "Sonuç": f"%{l_ffa}"})
                             if l_perox > 0: report_data.append({"Parametre": "Peroksit", "Girdi (g)": "-", "Sonuç": f"{l_perox} meq"})
-                        
                         if report_data: st.dataframe(pd.DataFrame(report_data), use_container_width=True)
                         else: st.warning("Rapor için değer giriniz.")
 
@@ -380,43 +382,44 @@ else:
                             total_val = price_net_deducted * net_weight
                             st.success(f"**TOPLAM TUTAR:** {total_val:,.2f} TL")
 
-                st.markdown("---")
-                st.subheader("3. Ödeme ve Kayıt")
-                f1, f2, f3 = st.columns(3)
-                doc_num = f1.text_input("Makbuz / Fatura No")
-                pay_amount = f2.number_input("Ödenen Tutar", 0.0)
-                pay_method = f3.selectbox("Ödeme Yöntemi", ["Nakit", "Banka", "Çek"])
-                if reg_type != "Emanet": st.metric("Kalan Bakiye", f"{total_val - pay_amount:,.2f} TL")
+                    st.markdown("---")
+                    st.subheader("3. Ödeme ve Kayıt")
+                    f1, f2, f3 = st.columns(3)
+                    doc_num = f1.text_input("Makbuz / Fatura No")
+                    pay_amount = f2.number_input("Ödenen Tutar", 0.0)
+                    pay_method = f3.selectbox("Ödeme Yöntemi", ["Nakit", "Banka", "Çek"])
+                    if reg_type != "Emanet": st.metric("Kalan Bakiye", f"{total_val - pay_amount:,.2f} TL")
 
-                if st.form_submit_button("✅ Fabrika Girişini Kaydet"):
-                    payload = {
-                        "created_by": st.session_state.user['email'], "status": "Pending Arrival",
-                        "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type,
-                        "id_number": id_num, "city": city, "district": dist_in, "village": vill_in,
-                        "phone_number": contact, "cert_status": cert_status,
-                        "reg_type": reg_type, "location": location, "item_type": hazelnut_type,
-                        "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num,
-                        "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount,
-                        "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag,
-                        "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv,
-                        "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, 
-                        "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over,
-                        "moisture": val_moist,
-                        "weight_visible_mold": w_vis_mold, "weight_hidden_mold": w_hid_mold,
-                        "weight_visible_tumor": w_vis_tumor, "weight_hidden_tumor": w_hid_tumor,
-                        "weight_worm_eaten": w_worm, "weight_lemon": w_lemon, "weight_decayed": w_decayed,
-                        "weight_broken": w_broken, "weight_twin": w_twin, "weight_other": w_other, 
-                        "weight_shell": w_shell, "count_membrane": c_membrane, "count_foreign": c_foreign,
-                        "lab_ffa": l_ffa, "lab_peroxide": l_perox, "lab_calibre": lab_cal,
-                        "lab_salmonella": l_salm, "lab_ecoli": l_ecoli, "lab_afla_b1": l_b1, "lab_afla_total": l_tot,
-                        "size_1_percent": size_1_g, "undersize_percent": undersize_g,
-                        "calculated_randiman": val_randiman,
-                        "gross_price_50": price_gross, "actual_unit_price": price_net_deducted
-                    }
-                    insert_record("purchases", payload)
-                    st.success("Fabrika Girişi Kaydedildi!")
+                    # --- FIXED INDENTATION FOR SUBMIT BUTTON ---
+                    if st.form_submit_button("✅ Fabrika Girişini Kaydet"):
+                        payload = {
+                            "created_by": st.session_state.user['email'], "status": "Pending Arrival",
+                            "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type,
+                            "id_number": id_num, "city": city, "district": dist_in, "village": vill_in,
+                            "phone_number": contact, "cert_status": cert_status,
+                            "reg_type": reg_type, "location": location, "item_type": hazelnut_type,
+                            "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num,
+                            "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount,
+                            "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag,
+                            "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv,
+                            "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, 
+                            "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over,
+                            "moisture": val_moist,
+                            "weight_visible_mold": w_vis_mold, "weight_hidden_mold": w_hid_mold,
+                            "weight_visible_tumor": w_vis_tumor, "weight_hidden_tumor": w_hid_tumor,
+                            "weight_worm_eaten": w_worm, "weight_lemon": w_lemon, "weight_decayed": w_decayed,
+                            "weight_broken": w_broken, "weight_twin": w_twin, "weight_other": w_other, 
+                            "weight_shell": w_shell, "count_membrane": c_membrane, "count_foreign": c_foreign,
+                            "lab_ffa": l_ffa, "lab_peroxide": l_perox, "lab_calibre": lab_cal,
+                            "lab_salmonella": l_salm, "lab_ecoli": l_ecoli, "lab_afla_b1": l_b1, "lab_afla_total": l_tot,
+                            "size_1_percent": size_1_g, "undersize_percent": undersize_g,
+                            "calculated_randiman": val_randiman,
+                            "gross_price_50": price_gross, "actual_unit_price": price_net_deducted
+                        }
+                        insert_record("purchases", payload)
+                        st.success("Fabrika Girişi Kaydedildi!")
 
-            # --- TAB 2: MALZEME ---
+            # --- TAB 2: MALZEME ALIMI ---
             with tab_malzeme:
                 st.subheader("Malzeme Seçimi")
                 material_cats = ["Ambalaj Malzemeleri", "Bakım Malzemeleri", "Ofis Malzemeleri", "Temizlik Malzemeleri", "Eşantiyon & Hediye", "İş Kıyafetleri", "Gıda ve Mutfak", "Diğer"]
@@ -567,7 +570,7 @@ else:
         else: st.info("Hareket yok.")
 
     # ----------------------------------------------------------------
-    # SCENARIO 2: CUSTOMER (MÜŞTERİ PANELİ - YENİ EKLENECEK)
+    # SCENARIO 2: CUSTOMER (MÜŞTERİ PANELİ)
     # ----------------------------------------------------------------
     elif st.session_state.role == 'customer':
         st.sidebar.markdown("---")
