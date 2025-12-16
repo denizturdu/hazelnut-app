@@ -3,7 +3,6 @@ from supabase import create_client, Client
 import bcrypt
 
 # --- SUPABASE CONNECTION ---
-# Secrets must be set in Streamlit Cloud -> Advanced Settings
 url = st.secrets["SUPABASE_URL"]
 key = st.secrets["SUPABASE_KEY"]
 supabase: Client = create_client(url, key)
@@ -12,11 +11,10 @@ supabase: Client = create_client(url, key)
 
 def hash_password(password: str) -> str:
     """Converts a plain text password into a secure hash."""
-    # bcrypt requires bytes, so we encode the string
     pwd_bytes = password.encode('utf-8')
     salt = bcrypt.gensalt()
     hashed = bcrypt.hashpw(pwd_bytes, salt)
-    return hashed.decode('utf-8') # Decode back to string for storage
+    return hashed.decode('utf-8')
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Checks if the plain password matches the hash."""
@@ -27,7 +25,7 @@ def register_user(email, password, role='customer'):
     try:
         hashed = hash_password(password)
         
-        # Employees are auto-approved (for now, or you can change this), Customers need approval
+        # Employees are auto-approved
         is_approved = True if role == 'employee' else False
         
         data = {
@@ -38,7 +36,13 @@ def register_user(email, password, role='customer'):
         }
         
         response = supabase.table("app_users").insert(data).execute()
-        return True, "Kayıt Başarılı! Onay bekleniyor."
+        
+        # --- FIXED LOGIC HERE ---
+        if is_approved:
+            return True, "Kayıt Başarılı! Hemen giriş yapabilirsiniz."
+        else:
+            return True, "Kayıt Başarılı! Yönetici onayı bekleniyor."
+            
     except Exception as e:
         return False, f"Hata: {e} (E-posta zaten kayıtlı olabilir)"
 
