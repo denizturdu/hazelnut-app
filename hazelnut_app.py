@@ -22,13 +22,13 @@ MODULE_MAP = {
 }
 
 CALIBRE_OPTIONS = [
-    "Mixed Size", "21mm+", "20mm+", "19mm+", "18mm+", "17mm+", "16mm+",
-            "15-16mm", "14-16mm", "14-15mm", "13-15mm", 
-            "13-14mm", "12-14mm", "12-13mm", "11-13mm", "11-12mm",
-            "10-12mm", "10-11mm", "9-11mm", "9-10mm", "9mm-", "9mm+", "0-2mm", "1-3mm",
-            "2-4mm", "4-6mm", "5-7mm", "6-8mm", "7-11mm", "3-11mm", "5-11mm",
-            "15μ", "18μ", "20μ", "21μ", "22μ", "23μ", "24μ", "25μ", "26μ", "27μ", "28μ",
-            "29μ", "30μ", "31μ", "32μ", "33μ", "34μ", "35μ"
+    "Mixed Size", "21mm+", "20mm+", "19mm+", "18mm+", "17mm+", "16mm+", 
+    "15-16mm", "14-15mm", "13-15mm", "13-14mm", "12-14mm", "12-13mm", 
+    "11-13mm", "11-12mm", "10-12mm", "10-11mm", "9-11mm", "9-10mm", 
+    "9mm-", "9mm+", "0-2mm", "1-3mm", "2-4mm", "4-6mm", "5-7mm", 
+    "6-8mm", "7-11mm", "3-11mm", "5-11mm", "15μ", "18μ", "20μ", 
+    "21μ", "22μ", "23μ", "24μ", "25μ", "26μ", "27μ", "28μ", "29μ", 
+    "30μ", "31μ", "32μ", "33μ", "34μ", "35μ"
 ]
 
 # --- HELPER FUNCTIONS ---
@@ -43,7 +43,7 @@ def calculate_percentages(base_w, inputs):
     return results
 
 def generate_offer_excel():
-    """Generates the Offer Excel file in memory."""
+    """Generates the Offer Excel file in memory with Linked Quality Sheet."""
     output = io.BytesIO()
     
     # 1. Define Master Data
@@ -76,11 +76,10 @@ def generate_offer_excel():
             "Şebin", "Bilecik", "Yalova", "Kaman", "Kaplan", "Şen", "Tokat"
         ],
         "Sizes": [
-             "Mixed Size", "21mm+", "20mm+", "19mm+", "18mm+", "17mm+", "16mm+",
-            "15-16mm", "14-16mm", "14-15mm", "13-15mm", 
-            "13-14mm", "12-14mm", "12-13mm", "11-13mm", "11-12mm",
-            "10-12mm", "10-11mm", "9-11mm", "9-10mm", "9mm-", "9mm+", "0-2mm", "1-3mm",
-            "2-4mm", "4-6mm", "5-7mm", "6-8mm", "7-11mm", "3-11mm", "5-11mm",
+            "Mixed Size", "21mm+", "20mm+", "19mm+", "18mm+", "17mm+", "16mm+",
+            "14-16mm", "13-15mm", "15-16mm", "14-15mm", "13-14mm", "12-14mm", "12-13mm", 
+            "11-13mm", "11-12mm", "10-12mm", "10-11mm", "9-11mm", "9-10mm", "9mm-", "9mm+", 
+            "0-2mm", "1-3mm", "2-4mm", "4-6mm", "5-7mm", "6-8mm", "7-11mm", "3-11mm", "5-11mm",
             "15μ", "18μ", "20μ", "21μ", "22μ", "23μ", "24μ", "25μ", "26μ", "27μ", "28μ",
             "29μ", "30μ", "31μ", "32μ", "33μ", "34μ", "35μ",
             "18/20 mm", "20/22 mm", "22/24 mm", "24/26 mm", "26/28 mm", "28/30 mm",
@@ -103,6 +102,8 @@ def generate_offer_excel():
 
     writer = pd.ExcelWriter(output, engine='xlsxwriter')
     workbook = writer.book
+    
+    # --- SHEET 1: OFFER SHEET ---
     worksheet = workbook.add_worksheet('Offer Sheet')
     worksheet.set_tab_color('#107C41')
 
@@ -111,8 +112,12 @@ def generate_offer_excel():
     label_format = workbook.add_format({'bold': True, 'align': 'right', 'bg_color': '#f2f2f2', 'border': 1})
     input_format = workbook.add_format({'border': 1, 'bg_color': '#ffffff'})
     table_header_format = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'bg_color': '#4472C4', 'font_color': 'white', 'border': 1, 'text_wrap': True})
+    
+    # Formats for Quality Sheet
+    linked_cell_format = workbook.add_format({'bg_color': '#E7E6E6', 'border': 1, 'italic': True, 'font_color': '#595959'})
+    quality_header_format = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'bg_color': '#FFC000', 'font_color': 'black', 'border': 1, 'text_wrap': True})
 
-    # Header Section
+    # --- MAIN SHEET LAYOUT ---
     worksheet.write('A1', 'AVELLA OFFER SHEET', header_format)
     headers = [
         ("Date:", "B3"), ("Offer No:", "D3"), ("Validity:", "F3"),
@@ -127,22 +132,67 @@ def generate_offer_excel():
         worksheet.write(input_cell, "", input_format)
     worksheet.merge_range('E5:G5', "", input_format)
 
-    # Product Table
+    # Main Product Table Columns (Removed Quality parameters)
     table_start_row = 8
     columns = [
         "Category", "Product Group", "Type/Process", "Variety", "Size",
-        "Packaging", "Net Wgt (kg)", "Price", "Currency", "Incoterms",
-        "Moisture %", "FFA %", "Skin %"
+        "Packaging", "Net Wgt (kg)", "Price", "Currency", "Incoterms"
     ]
+    
     for i, col_name in enumerate(columns):
         worksheet.write(table_start_row, i, col_name, table_header_format)
         worksheet.set_column(i, i, 15)
+    
+    # Adjust widths
     worksheet.set_column('B:B', 20)
     worksheet.set_column('C:C', 25)
     worksheet.set_column('D:D', 20)
     worksheet.set_column('F:F', 25)
 
-    # ReferenceData Sheet
+    # --- SHEET 2: QUALITY PARAMETERS ---
+    worksheet_qual = workbook.add_worksheet('Quality Parameters')
+    worksheet_qual.set_tab_color('#FFC000')
+
+    # Columns for Quality Sheet
+    # First 4 are linked to Main Sheet
+    qual_ident_cols = ["Product Group (Linked)", "Type (Linked)", "Variety (Linked)", "Size (Linked)"]
+    
+    qual_param_cols = [
+        "Humidity %", "FFA %", "Peroxide", "Oversize %", "Undersize %",
+        "Visible Rotten %", "Hidden Rotten %", "Visible Mouldy %", "Hidden Mouldy %",
+        "Visible Tumorous %", "Hidden Tumorous %", "Insect Damaged %", "Twin Kernels %",
+        "Mech. Damaged %", "Broken %", "Rancid %", "Shrivelled %",
+        "Other Types %", "Shell Pieces", "Foreign Matter"
+    ]
+    
+    all_qual_cols = qual_ident_cols + qual_param_cols
+
+    # Write Headers for Quality Sheet
+    for i, col_name in enumerate(all_qual_cols):
+        worksheet_qual.write(table_start_row, i, col_name, quality_header_format)
+        worksheet_qual.set_column(i, i, 18)
+
+    # --- DATA & LINKING LOGIC ---
+    # Apply to rows 9 to 100
+    start_row_idx = table_start_row + 1
+    end_row_idx = 100
+
+    for r in range(start_row_idx, end_row_idx):
+        # Excel row number (1-based)
+        xl_row = r + 1
+        
+        # 1. LINKING FORMULAS in Quality Sheet
+        # Points to Offer Sheet Columns B, C, D, E
+        worksheet_qual.write_formula(r, 0, f"='Offer Sheet'!B{xl_row}", linked_cell_format) # Group
+        worksheet_qual.write_formula(r, 1, f"='Offer Sheet'!C{xl_row}", linked_cell_format) # Type
+        worksheet_qual.write_formula(r, 2, f"='Offer Sheet'!D{xl_row}", linked_cell_format) # Variety
+        worksheet_qual.write_formula(r, 3, f"='Offer Sheet'!E{xl_row}", linked_cell_format) # Size
+        
+        # Format the rest of the quality cells as Input
+        for c in range(4, len(all_qual_cols)):
+            worksheet_qual.write(r, c, "", input_format)
+
+    # --- REFERENCE DATA & VALIDATION (Main Sheet) ---
     ref_sheet = workbook.add_worksheet('ReferenceData')
     ref_sheet.hide()
 
@@ -161,18 +211,15 @@ def generate_offer_excel():
     curr_range = write_list_to_ref("Currencies", data["Currencies"], 6)
     inco_range = write_list_to_ref("Incoterms", data["Incoterms"], 7)
 
-    # --- FIX: Apply Data Validation to RANGE instead of looping ---
-    start_row = table_start_row + 1
-    end_row = 100
-    
-    worksheet.data_validation(start_row, 0, end_row, 0, {'validate': 'list', 'source': cat_range})
-    worksheet.data_validation(start_row, 1, end_row, 1, {'validate': 'list', 'source': group_range})
-    worksheet.data_validation(start_row, 2, end_row, 2, {'validate': 'list', 'source': type_range})
-    worksheet.data_validation(start_row, 3, end_row, 3, {'validate': 'list', 'source': var_range})
-    worksheet.data_validation(start_row, 4, end_row, 4, {'validate': 'list', 'source': size_range})
-    worksheet.data_validation(start_row, 5, end_row, 5, {'validate': 'list', 'source': pack_range})
-    worksheet.data_validation(start_row, 8, end_row, 8, {'validate': 'list', 'source': curr_range})
-    worksheet.data_validation(start_row, 9, end_row, 9, {'validate': 'list', 'source': inco_range})
+    # Apply Validation to Main Sheet Columns
+    worksheet.data_validation(start_row_idx, 0, end_row_idx, 0, {'validate': 'list', 'source': cat_range})
+    worksheet.data_validation(start_row_idx, 1, end_row_idx, 1, {'validate': 'list', 'source': group_range})
+    worksheet.data_validation(start_row_idx, 2, end_row_idx, 2, {'validate': 'list', 'source': type_range})
+    worksheet.data_validation(start_row_idx, 3, end_row_idx, 3, {'validate': 'list', 'source': var_range})
+    worksheet.data_validation(start_row_idx, 4, end_row_idx, 4, {'validate': 'list', 'source': size_range})
+    worksheet.data_validation(start_row_idx, 5, end_row_idx, 5, {'validate': 'list', 'source': pack_range})
+    worksheet.data_validation(start_row_idx, 8, end_row_idx, 8, {'validate': 'list', 'source': curr_range})
+    worksheet.data_validation(start_row_idx, 9, end_row_idx, 9, {'validate': 'list', 'source': inco_range})
 
     writer.close()
     output.seek(0)
