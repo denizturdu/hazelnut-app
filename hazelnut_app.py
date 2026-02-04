@@ -18,7 +18,7 @@ MODULE_MAP = {
     3: "3. Mal Kabul (Kantar)",
     4: "4. Yönetici Ayarları",
     5: "5. Stok Takibi",
-    6: "6. Teklifler (Offers)"  # <-- NEW MODULE
+    6: "6. Teklifler (Offers)"
 }
 
 CALIBRE_OPTIONS = [
@@ -160,16 +160,18 @@ def generate_offer_excel():
     curr_range = write_list_to_ref("Currencies", data["Currencies"], 6)
     inco_range = write_list_to_ref("Incoterms", data["Incoterms"], 7)
 
-    # Data Validation
-    for row in range(table_start_row + 1, 100):
-        worksheet.data_validation(row, 0, {'validate': 'list', 'source': cat_range})
-        worksheet.data_validation(row, 1, {'validate': 'list', 'source': group_range})
-        worksheet.data_validation(row, 2, {'validate': 'list', 'source': type_range})
-        worksheet.data_validation(row, 3, {'validate': 'list', 'source': var_range})
-        worksheet.data_validation(row, 4, {'validate': 'list', 'source': size_range})
-        worksheet.data_validation(row, 5, {'validate': 'list', 'source': pack_range})
-        worksheet.data_validation(row, 8, {'validate': 'list', 'source': curr_range})
-        worksheet.data_validation(row, 9, {'validate': 'list', 'source': inco_range})
+    # --- FIX: Apply Data Validation to RANGE instead of looping ---
+    start_row = table_start_row + 1
+    end_row = 100
+    
+    worksheet.data_validation(start_row, 0, end_row, 0, {'validate': 'list', 'source': cat_range})
+    worksheet.data_validation(start_row, 1, end_row, 1, {'validate': 'list', 'source': group_range})
+    worksheet.data_validation(start_row, 2, end_row, 2, {'validate': 'list', 'source': type_range})
+    worksheet.data_validation(start_row, 3, end_row, 3, {'validate': 'list', 'source': var_range})
+    worksheet.data_validation(start_row, 4, end_row, 4, {'validate': 'list', 'source': size_range})
+    worksheet.data_validation(start_row, 5, end_row, 5, {'validate': 'list', 'source': pack_range})
+    worksheet.data_validation(start_row, 8, end_row, 8, {'validate': 'list', 'source': curr_range})
+    worksheet.data_validation(start_row, 9, end_row, 9, {'validate': 'list', 'source': inco_range})
 
     writer.close()
     output.seek(0)
@@ -197,7 +199,7 @@ if not st.session_state.user:
                 st.error(msg)
 
     with tab_register:
-        st.caption("Sadece Müşteriler eller Yeni Personel için")
+        st.caption("Sadece Müşteriler veya Yeni Personel için")
         new_email = st.text_input("E-posta", key="reg_email")
         new_pass = st.text_input("Şifre Belirleyin", type="password", key="reg_pass")
         new_pass_confirm = st.text_input("Şifre Tekrar", type="password", key="reg_pass2")
@@ -239,7 +241,7 @@ else:
         
         # 1. PERMISSION LOGIC
         if role == 'administrator':
-            allowed_ids = [1, 2, 3, 4, 5, 6] # Added 6 for Admin
+            allowed_ids = [1, 2, 3, 4, 5, 6] 
         else:
             allowed_ids = user.get('allowed_modules', [])
             if allowed_ids is None: allowed_ids = []
@@ -301,7 +303,7 @@ else:
                 with col_q2:
                     st.markdown("**Miktar ve Fiyatlandırma**")
                     net_weight = st.number_input("Toplam Net Ağırlık (kg)", min_value=0.0)
-                    st.caption("Paket Adetleri")
+                    st.caption("Paketleme Detayları")
                     p1, p2, p3 = st.columns(3)
                     cnt_nylon = p1.number_input("Naylon", min_value=0)
                     cnt_jute = p2.number_input("Jüt", min_value=0)
