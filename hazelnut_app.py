@@ -135,9 +135,21 @@ def generate_offer_excel():
     # Main Product Table Columns
     table_start_row = 8
     columns = [
-        "Category", "Product Group", "Type/Process", "Variety", "Size",
-        "Packaging", "Net Wgt (kg)", "Price", "Currency", "Incoterms",
-        "Place of Delivery" 
+        "Category", 
+        "Product Group", 
+        "Total Contract Volume (kg)", # NEW
+        "Type/Process", 
+        "Variety", 
+        "Size",
+        "Packaging", 
+        "Net Wgt (kg)", 
+        "Price", 
+        "Currency", 
+        "Incoterms",
+        "Place of Delivery",
+        "Min. Order Qty",       # NEW
+        "Shipment Schedule",    # NEW
+        "Payment Terms"         # NEW
     ]
     
     for i, col_name in enumerate(columns):
@@ -145,11 +157,14 @@ def generate_offer_excel():
         worksheet.set_column(i, i, 15)
     
     # Adjust widths
-    worksheet.set_column('B:B', 20)
-    worksheet.set_column('C:C', 25)
-    worksheet.set_column('D:D', 20)
-    worksheet.set_column('F:F', 25)
-    worksheet.set_column('K:K', 20) 
+    worksheet.set_column('B:B', 20) # Product Group
+    worksheet.set_column('C:C', 20) # Total Contract Vol
+    worksheet.set_column('D:D', 25) # Type
+    worksheet.set_column('E:E', 20) # Variety
+    worksheet.set_column('G:G', 25) # Packaging
+    worksheet.set_column('L:L', 20) # Place of Delivery
+    worksheet.set_column('N:N', 20) # Shipment Schedule
+    worksheet.set_column('O:O', 20) # Payment Terms
 
     # --- SHEET 2: QUALITY PARAMETERS ---
     worksheet_qual = workbook.add_worksheet('Quality Parameters')
@@ -158,7 +173,6 @@ def generate_offer_excel():
     # Columns for Quality Sheet
     qual_ident_cols = ["Product Group (Linked)", "Type (Linked)", "Variety (Linked)", "Size (Linked)"]
     
-    # UPDATED COLUMN NAMES
     qual_param_cols = [
         "Target Humidity %",
         "Maximum FFA %",
@@ -182,9 +196,9 @@ def generate_offer_excel():
         "Maximum Foreign Matter"
     ]
     
-    # --- DEFAULT VALUES (ORDER MATCHES ABOVE LIST) ---
+    # --- DEFAULT VALUES ---
     default_qual_values = [
-        "",      # Target Humidity % (Blank)
+        "",      # Target Humidity %
         1,       # Maximum FFA %
         1,       # Maximum Peroxide
         5,       # Maximum Oversize %
@@ -221,14 +235,19 @@ def generate_offer_excel():
         xl_row = r + 1
         
         # 1. LINKING FORMULAS
+        # Note: Columns in Offer Sheet have shifted due to "Total Contract Volume" insertion at index 2 (Column C)
+        # Group is Col 1 (B) -> Unchanged
+        # Type is now Col 3 (D)
+        # Variety is now Col 4 (E)
+        # Size is now Col 5 (F)
+        
         worksheet_qual.write_formula(r, 0, f"='Offer Sheet'!B{xl_row}", linked_cell_format) # Group
-        worksheet_qual.write_formula(r, 1, f"='Offer Sheet'!C{xl_row}", linked_cell_format) # Type
-        worksheet_qual.write_formula(r, 2, f"='Offer Sheet'!D{xl_row}", linked_cell_format) # Variety
-        worksheet_qual.write_formula(r, 3, f"='Offer Sheet'!E{xl_row}", linked_cell_format) # Size
+        worksheet_qual.write_formula(r, 1, f"='Offer Sheet'!D{xl_row}", linked_cell_format) # Type
+        worksheet_qual.write_formula(r, 2, f"='Offer Sheet'!E{xl_row}", linked_cell_format) # Variety
+        worksheet_qual.write_formula(r, 3, f"='Offer Sheet'!F{xl_row}", linked_cell_format) # Size
         
         # 2. WRITE DEFAULTS
         for i, val in enumerate(default_qual_values):
-            # Col index = 4 (offset for linked cols) + i
             worksheet_qual.write(r, 4 + i, val, input_format)
 
     # --- REFERENCE DATA & VALIDATION (Main Sheet) ---
@@ -250,15 +269,33 @@ def generate_offer_excel():
     curr_range = write_list_to_ref("Currencies", data["Currencies"], 6)
     inco_range = write_list_to_ref("Incoterms", data["Incoterms"], 7)
 
-    # Apply Validation to Main Sheet Columns
+    # Apply Validation to Main Sheet Columns (INDICES SHIFTED)
+    # 0: Category
+    # 1: Group
+    # 2: Total Contract Vol (No Validation, Manual Input)
+    # 3: Type
+    # 4: Variety
+    # 5: Size
+    # 6: Packaging
+    # 7: Net Wgt
+    # 8: Price
+    # 9: Currency
+    # 10: Incoterms
+    # 11: Place of Delivery
+    # 12: Min Qty
+    # 13: Schedule
+    # 14: Payment
+    
     worksheet.data_validation(start_row_idx, 0, end_row_idx, 0, {'validate': 'list', 'source': cat_range})
     worksheet.data_validation(start_row_idx, 1, end_row_idx, 1, {'validate': 'list', 'source': group_range})
-    worksheet.data_validation(start_row_idx, 2, end_row_idx, 2, {'validate': 'list', 'source': type_range})
-    worksheet.data_validation(start_row_idx, 3, end_row_idx, 3, {'validate': 'list', 'source': var_range})
-    worksheet.data_validation(start_row_idx, 4, end_row_idx, 4, {'validate': 'list', 'source': size_range})
-    worksheet.data_validation(start_row_idx, 5, end_row_idx, 5, {'validate': 'list', 'source': pack_range})
-    worksheet.data_validation(start_row_idx, 8, end_row_idx, 8, {'validate': 'list', 'source': curr_range})
-    worksheet.data_validation(start_row_idx, 9, end_row_idx, 9, {'validate': 'list', 'source': inco_range})
+    # Col 2 is Manual
+    worksheet.data_validation(start_row_idx, 3, end_row_idx, 3, {'validate': 'list', 'source': type_range})
+    worksheet.data_validation(start_row_idx, 4, end_row_idx, 4, {'validate': 'list', 'source': var_range})
+    worksheet.data_validation(start_row_idx, 5, end_row_idx, 5, {'validate': 'list', 'source': size_range})
+    worksheet.data_validation(start_row_idx, 6, end_row_idx, 6, {'validate': 'list', 'source': pack_range})
+    # Col 7, 8 Manual
+    worksheet.data_validation(start_row_idx, 9, end_row_idx, 9, {'validate': 'list', 'source': curr_range})
+    worksheet.data_validation(start_row_idx, 10, end_row_idx, 10, {'validate': 'list', 'source': inco_range})
 
     writer.close()
     output.seek(0)
