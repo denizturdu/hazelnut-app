@@ -132,11 +132,12 @@ def generate_offer_excel():
         worksheet.write(input_cell, "", input_format)
     worksheet.merge_range('E5:G5', "", input_format)
 
-    # Main Product Table Columns (Removed Quality parameters)
+    # Main Product Table Columns (Added Place of Delivery)
     table_start_row = 8
     columns = [
         "Category", "Product Group", "Type/Process", "Variety", "Size",
-        "Packaging", "Net Wgt (kg)", "Price", "Currency", "Incoterms"
+        "Packaging", "Net Wgt (kg)", "Price", "Currency", "Incoterms",
+        "Place of Delivery" 
     ]
     
     for i, col_name in enumerate(columns):
@@ -148,21 +149,37 @@ def generate_offer_excel():
     worksheet.set_column('C:C', 25)
     worksheet.set_column('D:D', 20)
     worksheet.set_column('F:F', 25)
+    worksheet.set_column('K:K', 20) 
 
     # --- SHEET 2: QUALITY PARAMETERS ---
     worksheet_qual = workbook.add_worksheet('Quality Parameters')
     worksheet_qual.set_tab_color('#FFC000')
 
     # Columns for Quality Sheet
-    # First 4 are linked to Main Sheet
     qual_ident_cols = ["Product Group (Linked)", "Type (Linked)", "Variety (Linked)", "Size (Linked)"]
     
+    # UPDATED COLUMN NAMES WITH "MAXIMUM" AND "TARGET"
     qual_param_cols = [
-        "Humidity %", "FFA %", "Peroxide", "Oversize %", "Undersize %",
-        "Visible Rotten %", "Hidden Rotten %", "Visible Mouldy %", "Hidden Mouldy %",
-        "Visible Tumorous %", "Hidden Tumorous %", "Insect Damaged %", "Twin Kernels %",
-        "Mech. Damaged %", "Broken %", "Rancid %", "Shrivelled %",
-        "Other Types %", "Shell Pieces", "Foreign Matter"
+        "Target Humidity %", # Changed to Target
+        "Maximum FFA %",
+        "Maximum Peroxide",
+        "Maximum Oversize %",
+        "Maximum Undersize %",
+        "Maximum Visible Rotten %",
+        "Maximum Hidden Rotten %",
+        "Maximum Visible Mouldy %",
+        "Maximum Hidden Mouldy %",
+        "Maximum Visible Tumorous %",
+        "Maximum Hidden Tumorous %",
+        "Maximum Insect Damaged %",
+        "Maximum Twin Kernels %",
+        "Maximum Mech. Damaged %",
+        "Maximum Broken %",
+        "Maximum Rancid %",
+        "Maximum Shrivelled %",
+        "Maximum Other Types %",
+        "Maximum Shell Pieces",
+        "Maximum Foreign Matter"
     ]
     
     all_qual_cols = qual_ident_cols + qual_param_cols
@@ -170,7 +187,7 @@ def generate_offer_excel():
     # Write Headers for Quality Sheet
     for i, col_name in enumerate(all_qual_cols):
         worksheet_qual.write(table_start_row, i, col_name, quality_header_format)
-        worksheet_qual.set_column(i, i, 18)
+        worksheet_qual.set_column(i, i, 22) # Slightly wider for longer titles
 
     # --- DATA & LINKING LOGIC ---
     # Apply to rows 9 to 100
@@ -182,7 +199,6 @@ def generate_offer_excel():
         xl_row = r + 1
         
         # 1. LINKING FORMULAS in Quality Sheet
-        # Points to Offer Sheet Columns B, C, D, E
         worksheet_qual.write_formula(r, 0, f"='Offer Sheet'!B{xl_row}", linked_cell_format) # Group
         worksheet_qual.write_formula(r, 1, f"='Offer Sheet'!C{xl_row}", linked_cell_format) # Type
         worksheet_qual.write_formula(r, 2, f"='Offer Sheet'!D{xl_row}", linked_cell_format) # Variety
