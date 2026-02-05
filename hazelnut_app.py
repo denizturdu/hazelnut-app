@@ -43,7 +43,7 @@ def calculate_percentages(base_w, inputs):
     return results
 
 def generate_offer_excel():
-    """Generates the Offer Excel file in memory with Linked Quality Sheet."""
+    """Generates the Offer Excel file in memory with Linked Quality Sheet and Defaults."""
     output = io.BytesIO()
     
     # 1. Define Master Data
@@ -132,7 +132,7 @@ def generate_offer_excel():
         worksheet.write(input_cell, "", input_format)
     worksheet.merge_range('E5:G5', "", input_format)
 
-    # Main Product Table Columns (Added Place of Delivery)
+    # Main Product Table Columns
     table_start_row = 8
     columns = [
         "Category", "Product Group", "Type/Process", "Variety", "Size",
@@ -158,9 +158,9 @@ def generate_offer_excel():
     # Columns for Quality Sheet
     qual_ident_cols = ["Product Group (Linked)", "Type (Linked)", "Variety (Linked)", "Size (Linked)"]
     
-    # UPDATED COLUMN NAMES WITH "MAXIMUM" AND "TARGET"
+    # UPDATED COLUMN NAMES
     qual_param_cols = [
-        "Target Humidity %", # Changed to Target
+        "Target Humidity %",
         "Maximum FFA %",
         "Maximum Peroxide",
         "Maximum Oversize %",
@@ -182,31 +182,54 @@ def generate_offer_excel():
         "Maximum Foreign Matter"
     ]
     
+    # --- DEFAULT VALUES (ORDER MATCHES ABOVE LIST) ---
+    default_qual_values = [
+        "",      # Target Humidity % (Blank)
+        1,       # Maximum FFA %
+        1,       # Maximum Peroxide
+        5,       # Maximum Oversize %
+        5,       # Maximum Undersize %
+        2,       # Maximum Visible Rotten %
+        2.5,     # Maximum Hidden Rotten %
+        0.5,     # Maximum Visible Mouldy %
+        0.5,     # Maximum Hidden Mouldy %
+        5,       # Maximum Visible Tumorous %
+        5,       # Maximum Hidden Tumorous %
+        0,       # Maximum Insect Damaged %
+        2,       # Maximum Twin Kernels %
+        8,       # Maximum Mech. Damaged %
+        4,       # Maximum Broken %
+        1,       # Maximum Rancid %
+        2.5,     # Maximum Shrivelled %
+        10,      # Maximum Other Types %
+        "0.01%", # Maximum Shell Pieces
+        0        # Maximum Foreign Matter
+    ]
+    
     all_qual_cols = qual_ident_cols + qual_param_cols
 
     # Write Headers for Quality Sheet
     for i, col_name in enumerate(all_qual_cols):
         worksheet_qual.write(table_start_row, i, col_name, quality_header_format)
-        worksheet_qual.set_column(i, i, 22) # Slightly wider for longer titles
+        worksheet_qual.set_column(i, i, 22) 
 
     # --- DATA & LINKING LOGIC ---
-    # Apply to rows 9 to 100
     start_row_idx = table_start_row + 1
     end_row_idx = 100
 
     for r in range(start_row_idx, end_row_idx):
-        # Excel row number (1-based)
         xl_row = r + 1
         
-        # 1. LINKING FORMULAS in Quality Sheet
+        # 1. LINKING FORMULAS
         worksheet_qual.write_formula(r, 0, f"='Offer Sheet'!B{xl_row}", linked_cell_format) # Group
         worksheet_qual.write_formula(r, 1, f"='Offer Sheet'!C{xl_row}", linked_cell_format) # Type
         worksheet_qual.write_formula(r, 2, f"='Offer Sheet'!D{xl_row}", linked_cell_format) # Variety
         worksheet_qual.write_formula(r, 3, f"='Offer Sheet'!E{xl_row}", linked_cell_format) # Size
         
-        # Format the rest of the quality cells as Input
-        for c in range(4, len(all_qual_cols)):
-            worksheet_qual.write(r, c, "", input_format)
+        # 2. WRITE DEFAULTS
+        for i, val in enumerate(default_qual_values):
+            # Col index = 4 (offset for linked cols) + i
+            worksheet_qual.write(r, 4 + i, val, input_format)
 
     # --- REFERENCE DATA & VALIDATION (Main Sheet) ---
     ref_sheet = workbook.add_worksheet('ReferenceData')
