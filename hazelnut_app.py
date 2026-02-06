@@ -6,6 +6,7 @@ import io
 import xlsxwriter
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
+import requests
 
 st.set_page_config(page_title="Fındık Fabrikası Yönetimi", layout="wide")
 
@@ -40,6 +41,12 @@ def calculate_randiman(sample_w, good, shriv):
     if sample_w == 0: return 0.0
     return ((good + (shriv / 2)) / sample_w) * 100
 
+def calculate_percentages(base_w, inputs):
+    results = {}
+    if base_w == 0: return {k: 0.0 for k in inputs}
+    for k, v in inputs.items(): results[k] = (v / base_w) * 100
+    return results
+
 def get_market_prices():
     """Fetch all market prices sorted by date."""
     try:
@@ -47,6 +54,29 @@ def get_market_prices():
         return pd.DataFrame(response.data)
     except:
         return pd.DataFrame()
+
+def get_live_rates():
+    """Fetches live USD/TRY and EUR/TRY rates from a public API."""
+    # Defaults in case of failure
+    rates = {"USD": 34.50, "EUR": 37.20} 
+    try:
+        # Using a free public API (exchangerate-api)
+        url = "https://open.er-api.com/v6/latest/TRY"
+        resp = requests.get(url, timeout=2)
+        if resp.status_code == 200:
+            data = resp.json()
+            if "rates" in data:
+                # API gives rates relative to TRY (e.g. 1 TRY = 0.03 USD)
+                # We want 1 USD = X TRY, so we invert
+                usd_val = data["rates"].get("USD")
+                eur_val = data["rates"].get("EUR")
+                
+                if usd_val: rates["USD"] = 1 / usd_val
+                if eur_val: rates["EUR"] = 1 / eur_val
+    except Exception as e:
+        # Fallback to defaults silently if API fails
+        pass
+    return rates
 
 def generate_offer_excel():
     """Generates the Offer Excel file in memory with Linked Quality Sheet and Defaults."""
@@ -358,59 +388,66 @@ else:
         with tabs[0]:
             st.header("🌰 Market Updates & Inshell Prices")
             
-            with st.expander("Currency Settings (Live Rates Simulation)", expanded=True):
+            # 1. LIVE RATES
+            rates = get_live_rates()
+            rate_usd = rates.get("USD", 34.0)
+            rate_eur = rates.get("EUR", 37.0)
+            
+            with st.expander("Live Currency Rates (Auto-fetched)", expanded=True):
                 c1, c2 = st.columns(2)
-                rate_usd = c1.number_input("Current USD/TL Rate", value=34.50, min_value=1.0, format="%.2f")
-                rate_eur = c2.number_input("Current EUR/TL Rate", value=37.20, min_value=1.0, format="%.2f")
+                c1.metric("USD/TRY", f"{rate_usd:.4f}")
+                c2.metric("EUR/TRY", f"{rate_eur:.4f}")
+                st.caption("Rates fetched automatically. If API fails, defaults are used.")
             
-            st.caption(f"Charts below show historical TL prices converted using TODAY's rates: 1 USD = {rate_usd} TL, 1 EUR = {rate_eur} TL.")
-            
+            # 2. FETCH DATA
             df_prices = get_market_prices()
             
             if not df_prices.empty:
                 df_prices['date'] = pd.to_datetime(df_prices['date'])
-                one_year_ago = datetime.now() - timedelta(days=365)
-                df_prices = df_prices[df_prices['date'] >= one_year_ago]
-                hazelnut_types = ["Tombul", "Cakildak", "Levant"]
                 
+                # Filter last 365 days
+                # one_year_ago = datetime.now() - timedelta(days=365)
+                # df_prices = df_prices[df_prices['date'] >= one_year_ago]
+                
+                hazelnut_types = ["Tombul", "Cakildak", "Levant"]
+                colors = {"Tombul": "firebrick", "Cakildak": "royalblue", "Levant": "green"}
+                
+                st.markdown("---")
+                
+                # --- GRAPH 1: TL PRICES ---
+                st.subheader("1. Inshell Prices (TL/kg)")
+                fig_tl = go.Figure()
                 for h_type in hazelnut_types:
-                    st.subheader(f"{h_type} Inshell Price Trends")
-                    df_subset = df_prices[df_prices['hazelnut_type'] == h_type].sort_values('date')
-                    
-                    if not df_subset.empty:
-                        trace_tl = go.Scatter(
-                            x=df_subset['date'], y=df_subset['price_tl'], name=f"{h_type} (TL)",
-                            line=dict(color='firebrick', width=3), mode='lines+markers'
-                        )
-                        trace_usd = go.Scatter(
-                            x=df_subset['date'], y=df_subset['price_tl'] / rate_usd, name=f"{h_type} (USD)",
-                            line=dict(color='royalblue', width=2, dash='dot'), yaxis='y2'
-                        )
-                        trace_eur = go.Scatter(
-                            x=df_subset['date'], y=df_subset['price_tl'] / rate_eur, name=f"{h_type} (EUR)",
-                            line=dict(color='green', width=2, dash='dot'), yaxis='y2'
-                        )
-                        
-                        fig = go.Figure(data=[trace_tl, trace_usd, trace_eur])
-                        # FIXED: Use nested dictionaries for title/font to ensure compatibility
-                        fig.update_layout(
-                            xaxis=dict(title="Date"),
-                            yaxis=dict(
-                                title=dict(text="Price (TL)", font=dict(color="firebrick")),
-                                tickfont=dict(color="firebrick")
-                            ),
-                            yaxis2=dict(
-                                title=dict(text="Price (USD / EUR)", font=dict(color="royalblue")),
-                                tickfont=dict(color="royalblue"),
-                                overlaying="y",
-                                side="right"
-                            ),
-                            hovermode="x unified",
-                            legend=dict(x=0, y=1.1, orientation="h")
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
-                    else:
-                        st.warning(f"No data for {h_type} in the last 365 days.")
+                    sub = df_prices[df_prices['hazelnut_type'] == h_type].sort_values('date')
+                    if not sub.empty:
+                        fig_tl.add_trace(go.Scatter(x=sub['date'], y=sub['price_tl'], name=h_type, line=dict(color=colors[h_type], width=3)))
+                fig_tl.update_layout(xaxis_title="Date", yaxis_title="Price (TL)", hovermode="x unified", height=400)
+                st.plotly_chart(fig_tl, use_container_width=True)
+                
+                # --- GRAPH 2: USD PRICES ---
+                st.subheader("2. Inshell Prices (USD/kg)")
+                fig_usd = go.Figure()
+                for h_type in hazelnut_types:
+                    sub = df_prices[df_prices['hazelnut_type'] == h_type].sort_values('date')
+                    if not sub.empty:
+                        # Convert using LIVE rate
+                        usd_prices = sub['price_tl'] / rate_usd
+                        fig_usd.add_trace(go.Scatter(x=sub['date'], y=usd_prices, name=h_type, line=dict(color=colors[h_type], width=3)))
+                fig_usd.update_layout(xaxis_title="Date", yaxis_title="Price (USD)", hovermode="x unified", height=400)
+                st.plotly_chart(fig_usd, use_container_width=True)
+                
+                # --- GRAPH 3: EUR PRICES ---
+                st.subheader("3. Inshell Prices (EUR/kg)")
+                fig_eur = go.Figure()
+                for h_type in hazelnut_types:
+                    sub = df_prices[df_prices['hazelnut_type'] == h_type].sort_values('date')
+                    if not sub.empty:
+                        # Convert using LIVE rate
+                        eur_prices = sub['price_tl'] / rate_eur
+                        fig_eur.add_trace(go.Scatter(x=sub['date'], y=eur_prices, name=h_type, line=dict(color=colors[h_type], width=3)))
+                fig_eur.update_layout(xaxis_title="Date", yaxis_title="Price (EUR)", hovermode="x unified", height=400)
+                st.plotly_chart(fig_eur, use_container_width=True)
+
             else:
                 st.info("No market price data available yet.")
 
