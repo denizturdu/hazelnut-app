@@ -48,37 +48,16 @@ def calculate_percentages(base_w, inputs):
     return results
 
 def get_market_prices():
-    """Fetch ALL market prices, including exchange rates."""
-    all_rows = []
-    start = 0
-    batch_size = 1000
-    
-    while True:
-        try:
-            # Fetch range start to start+batch_size-1
-            response = supabase.table("market_prices").select("*").order("date", desc=False).range(start, start + batch_size - 1).execute()
-            batch = response.data
-            if not batch: break
-            all_rows.extend(batch)
-            if len(batch) < batch_size: break
-            start += batch_size
-        except Exception as e:
-            st.error(f"Data fetch error: {e}")
-            break
-            
-    df = pd.DataFrame(all_rows)
-    
-    if not df.empty:
-        df['date'] = pd.to_datetime(df['date'])
-        if 'id' in df.columns:
-            df = df.sort_values(by=['date', 'id'])
-        else:
-            df = df.sort_values(by='date')
-        
-        # Deduplicate: Keep the last entry (latest ID) for any Date+Type combo
-        df = df.drop_duplicates(subset=['date', 'hazelnut_type'], keep='last')
-        
-    return df
+    """Fetch ALL market prices."""
+    try:
+        # Fetching all rows sorted by date
+        response = supabase.table("market_prices").select("*").order("date", desc=False).limit(3000).execute()
+        df = pd.DataFrame(response.data)
+        if not df.empty:
+            df['date'] = pd.to_datetime(df['date'])
+        return df
+    except:
+        return pd.DataFrame()
 
 def get_live_rates():
     """Fetches live USD/TRY and EUR/TRY rates from a public API."""
@@ -100,13 +79,12 @@ def get_live_rates():
 def sync_historical_rates_db():
     """Fetches historical rates from Frankfurter API and updates Supabase rows."""
     try:
-        # 1. Fetch current data to know which dates we need
         df = get_market_prices()
         if df.empty:
             return False, "No data to sync."
         
         min_date = df['date'].min().strftime('%Y-%m-%d')
-        # Frankfurter allows '..' for time series
+        
         # Fetch EUR -> TRY
         url_eur = f"https://api.frankfurter.app/{min_date}..?from=EUR&to=TRY"
         resp_eur = requests.get(url_eur)
@@ -117,44 +95,29 @@ def sync_historical_rates_db():
         resp_usd = requests.get(url_usd)
         data_usd = resp_usd.json().get('rates', {})
 
-        # 2. Prepare Updates
         updates = []
-        # We need to iterate over the dataframe and match dates
-        # Note: API dates are strings 'YYYY-MM-DD'. DataFrame dates are Timestamps.
-        
         for index, row in df.iterrows():
             date_str = row['date'].strftime('%Y-%m-%d')
-            
-            # Get rates for this specific date (or closest previous if weekend/holiday handling needed, 
-            # but usually API returns date keys available)
-            # If date not in API (e.g. weekend), we might miss it. 
-            # Simpler approach: Check exact match first.
             
             rate_eur = data_eur.get(date_str, {}).get('TRY')
             rate_usd = data_usd.get(date_str, {}).get('TRY')
             
-            # If direct match fail (weekend), look for recent keys? 
-            # Ideally we assume the API gap filling or just update what we find.
-            # Let's update only if we found a rate.
-            
+            # If valid rates found, queue an update
             if rate_eur or rate_usd:
                 update_payload = {'id': int(row['id'])}
                 if rate_eur: update_payload['rate_eur_try'] = rate_eur
                 if rate_usd: update_payload['rate_usd_try'] = rate_usd
                 updates.append(update_payload)
 
-        # 3. Batch Update Supabase
-        # Supabase upsert requires primary key match.
         if updates:
-            # Upsert in chunks to avoid payload limits
-            chunk_size = 500
+            chunk_size = 200 
             for i in range(0, len(updates), chunk_size):
                 chunk = updates[i:i + chunk_size]
                 supabase.table("market_prices").upsert(chunk).execute()
             
             return True, f"Successfully synced {len(updates)} rows with real bank rates."
         else:
-            return False, "No matching dates found in API."
+            return False, "No matching dates found in API or connection failed."
 
     except Exception as e:
         return False, f"Sync Error: {str(e)}"
@@ -162,6 +125,7 @@ def sync_historical_rates_db():
 def generate_offer_excel():
     """Generates the Offer Excel file in memory."""
     output = io.BytesIO()
+    
     data = {
         "Categories": ["Nuts", "Dried Fruit", "Oil", "Chocolate"],
         "Product_Groups": ["Hazelnuts", "Walnuts", "Pistachios", "Almonds", "Peanuts", "Cashew Nuts", "Brazil Nuts", "Pine Nuts", "Macadamia Nuts", "Pecan Nuts", "Apricots", "Raisins", "Figs", "Plums", "Hazelnut Oil", "Olive Oil", "Hazelnut Cream", "Hazelnut Crunch", "Pistachio Cream", "Pistachio Crunch"],
@@ -172,32 +136,43 @@ def generate_offer_excel():
         "Currencies": ["SEK", "TL", "USD", "EUR", "NOK"],
         "Incoterms": ["EXW", "FCA", "CPT", "CIP", "DAP", "DPU", "DDP", "FAS", "FOB", "CFR", "CIF"]
     }
+
     writer = pd.ExcelWriter(output, engine='xlsxwriter')
     workbook = writer.book
+    
+    # --- SHEET 1: OFFER SHEET ---
     worksheet = workbook.add_worksheet('Offer Sheet')
     worksheet.set_tab_color('#107C41')
+
     header_format = workbook.add_format({'bold': True, 'font_size': 14, 'color': '#203764'})
     label_format = workbook.add_format({'bold': True, 'align': 'right', 'bg_color': '#f2f2f2', 'border': 1})
     input_format = workbook.add_format({'border': 1, 'bg_color': '#ffffff'})
     table_header_format = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'bg_color': '#4472C4', 'font_color': 'white', 'border': 1, 'text_wrap': True})
     linked_cell_format = workbook.add_format({'bg_color': '#E7E6E6', 'border': 1, 'italic': True, 'font_color': '#595959'})
     quality_header_format = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'bg_color': '#FFC000', 'font_color': 'black', 'border': 1, 'text_wrap': True})
+
     worksheet.write('A1', 'AVELLA OFFER SHEET', header_format)
     headers = [("Date:", "B3"), ("Offer No:", "D3"), ("Validity:", "F3"), ("Customer Name:", "B4"), ("Cust. Ref:", "D4"), ("Avella Ref:", "F4"), ("Payment Terms:", "B5"), ("Delivery Addr:", "D5")]
     for label, cell in headers:
         worksheet.write(cell, label, label_format); col_letter = cell[0]; row_num = int(cell[1:]); input_cell = chr(ord(col_letter) + 1) + str(row_num); worksheet.write(input_cell, "", input_format)
-    worksheet.merge_range('E5:G5', "", input_format); table_start_row = 8
+    worksheet.merge_range('E5:G5', "", input_format)
+
+    table_start_row = 8
     columns = ["Category", "Product Group", "Total Contract Volume (kg)", "Type/Process", "Variety", "Size", "Packaging", "Net Wgt (kg)", "Price", "Currency", "Incoterms", "Place of Delivery", "Minimum Order Quantity (kg)", "Shipment Schedule", "Payment Terms"]
     for i, col_name in enumerate(columns): worksheet.write(table_start_row, i, col_name, table_header_format); worksheet.set_column(i, i, 15)
+    
     worksheet.set_column('B:B', 20); worksheet.set_column('C:C', 20); worksheet.set_column('D:D', 25); worksheet.set_column('E:E', 20); worksheet.set_column('G:G', 25); worksheet.set_column('L:L', 20); worksheet.set_column('M:M', 25); worksheet.set_column('N:N', 20); worksheet.set_column('O:O', 20)
-    worksheet_qual = workbook.add_worksheet('Quality Parameters'); worksheet_qual.set_tab_color('#FFC000')
+
+    worksheet_qual = workbook.add_worksheet('Quality Parameters')
+    worksheet_qual.set_tab_color('#FFC000')
     qual_ident_cols = ["Product Group (Linked)", "Type (Linked)", "Variety (Linked)", "Size (Linked)"]
     qual_param_cols = ["Target Humidity %", "Maximum FFA %", "Maximum Peroxide", "Maximum Oversize %", "Maximum Undersize %", "Maximum Visible Rotten %", "Maximum Hidden Rotten %", "Maximum Visible Mouldy %", "Maximum Hidden Mouldy %", "Maximum Visible Tumorous %", "Maximum Hidden Tumorous %", "Maximum Insect Damaged %", "Maximum Twin Kernels %", "Maximum Mech. Damaged %", "Maximum Broken %", "Maximum Rancid %", "Maximum Shrivelled %", "Maximum Other Types %", "Maximum Shell Pieces", "Maximum Foreign Matter"]
     default_qual_values = ["", 1, 1, 5, 5, 2, 2.5, 0.5, 0.5, 5, 5, 0, 2, 8, 4, 1, 2.5, 10, "0.01%", 0]; all_qual_cols = qual_ident_cols + qual_param_cols
-    for i, col_name in enumerate(all_qual_cols): worksheet_qual.write(table_start_row, i, col_name, quality_header_format); worksheet_qual.set_column(i, i, 22)
+    for i, col_name in enumerate(all_qual_cols): worksheet_qual.write(table_start_row, i, col_name, quality_header_format); worksheet_qual.set_column(i, i, 22) 
     for r in range(table_start_row + 1, 100):
         xl_row = r + 1; worksheet_qual.write_formula(r, 0, f"='Offer Sheet'!B{xl_row}", linked_cell_format); worksheet_qual.write_formula(r, 1, f"='Offer Sheet'!D{xl_row}", linked_cell_format); worksheet_qual.write_formula(r, 2, f"='Offer Sheet'!E{xl_row}", linked_cell_format); worksheet_qual.write_formula(r, 3, f"='Offer Sheet'!F{xl_row}", linked_cell_format)
         for i, val in enumerate(default_qual_values): worksheet_qual.write(r, 4 + i, val, input_format)
+
     ref_sheet = workbook.add_worksheet('ReferenceData'); ref_sheet.hide()
     def write_list_to_ref(header, data_list, col_idx):
         ref_sheet.write(0, col_idx, header); [ref_sheet.write(i + 1, col_idx, item) for i, item in enumerate(data_list)]; return f"=ReferenceData!${xlsxwriter.utility.xl_col_to_name(col_idx)}$2:${xlsxwriter.utility.xl_col_to_name(col_idx)}${len(data_list) + 1}"
@@ -272,31 +247,40 @@ else:
             st.header("🌰 Market Updates & Inshell Prices")
             df_prices = get_market_prices()
             
+            # Live Rates Header
+            live_rates = get_live_rates()
+            rate_usd_live = live_rates.get("USD", 34.0)
+            rate_eur_live = live_rates.get("EUR", 37.0)
+            with st.expander("Live Currency Rates (Auto-fetched)", expanded=True):
+                c1, c2 = st.columns(2)
+                c1.metric("USD/TRY", f"{rate_usd_live:.4f}")
+                c2.metric("EUR/TRY", f"{rate_eur_live:.4f}")
+            
             if not df_prices.empty:
                 max_db_date = df_prices['date'].max()
                 start_window = max_db_date - timedelta(days=365)
-                hazelnut_types = ["Tombul", "Cakildak", "Levant"]
                 colors = {"Tombul": "firebrick", "Cakildak": "royalblue", "Levant": "green"}
                 
                 st.markdown("---")
                 
                 def build_chart(title, mode_type, y_label):
                     fig = go.Figure()
-                    for h_type in hazelnut_types:
-                        sub = df_prices[df_prices['hazelnut_type'] == h_type].sort_values('date')
-                        if not sub.empty:
+                    for h_type in ["Tombul", "Cakildak", "Levant"]:
+                        col_name = f"price_{h_type.lower()}"
+                        if col_name in df_prices.columns:
                             if mode_type == 'TL':
-                                y_vals = sub['price_tl']
+                                y_vals = df_prices[col_name]
                             elif mode_type == 'USD':
-                                y_vals = sub.apply(lambda row: row['price_tl'] / (row['rate_usd_try'] if pd.notnull(row.get('rate_usd_try')) and row['rate_usd_try'] > 0 else 1.0), axis=1)
+                                y_vals = df_prices[col_name] / df_prices['rate_usd_try']
                             elif mode_type == 'EUR':
-                                y_vals = sub.apply(lambda row: row['price_tl'] / (row['rate_eur_try'] if pd.notnull(row.get('rate_eur_try')) and row['rate_eur_try'] > 0 else 1.0), axis=1)
+                                y_vals = df_prices[col_name] / df_prices['rate_eur_try']
                             
                             fig.add_trace(go.Scatter(
-                                x=sub['date'], y=y_vals, name=h_type,
+                                x=df_prices['date'], y=y_vals, name=h_type,
                                 line=dict(color=colors[h_type], width=3),
                                 mode='lines', fill=None
                             ))
+                    
                     fig.update_layout(
                         title=title,
                         xaxis=dict(title="Date", rangeslider=dict(visible=True), type="date", range=[start_window, max_db_date]),
@@ -316,87 +300,67 @@ else:
             with tabs[1]:
                 st.header("📝 Input Daily Market Prices")
                 
-                # Fetch live rates for pre-filling the form
                 live_rates = get_live_rates()
-                default_usd_rate = live_rates.get("USD", 0.0)
-                default_eur_rate = live_rates.get("EUR", 0.0)
+                default_usd = live_rates.get("USD", 0.0)
+                default_eur = live_rates.get("EUR", 0.0)
 
                 with st.form("price_input_form"):
                     d_date = st.date_input("Date", value=datetime.now())
+                    st.caption("Enter prices for ALL 3 types (TL/kg).")
                     c1, c2, c3 = st.columns(3)
-                    p_tombul = c1.number_input("Tombul (TL/kg)", min_value=0.0, step=0.5)
-                    p_cakildak = c2.number_input("Cakildak (TL/kg)", min_value=0.0, step=0.5)
-                    p_levant = c3.number_input("Levant (TL/kg)", min_value=0.0, step=0.5)
+                    p_tombul = c1.number_input("Tombul", min_value=0.0, step=0.5)
+                    p_cakildak = c2.number_input("Cakildak", min_value=0.0, step=0.5)
+                    p_levant = c3.number_input("Levant", min_value=0.0, step=0.5)
                     st.markdown("---")
+                    st.write("**Exchange Rates (Auto-fetched)**")
                     c4, c5 = st.columns(2)
-                    r_usd = c4.number_input("USD/TRY Rate", min_value=0.0, step=0.01, format="%.4f", value=default_usd_rate)
-                    r_eur = c5.number_input("EUR/TRY Rate", min_value=0.0, step=0.01, format="%.4f", value=default_eur_rate)
+                    r_usd = c4.number_input("USD/TRY Rate", min_value=0.0, step=0.01, format="%.4f", value=default_usd)
+                    r_eur = c5.number_input("EUR/TRY Rate", min_value=0.0, step=0.01, format="%.4f", value=default_eur)
                     
-                    if st.form_submit_button("Save Prices"):
-                        data_to_insert = []
-                        base_entry = {"date": str(d_date), "created_by": st.session_state.user['email']}
-                        if r_usd > 0: base_entry["rate_usd_try"] = r_usd
-                        if r_eur > 0: base_entry["rate_eur_try"] = r_eur
-                        
-                        if p_tombul > 0: data_to_insert.append({**base_entry, "hazelnut_type": "Tombul", "price_tl": p_tombul})
-                        if p_cakildak > 0: data_to_insert.append({**base_entry, "hazelnut_type": "Cakildak", "price_tl": p_cakildak})
-                        if p_levant > 0: data_to_insert.append({**base_entry, "hazelnut_type": "Levant", "price_tl": p_levant})
-                        
-                        if data_to_insert:
+                    if st.form_submit_button("Save Entry"):
+                        if p_tombul > 0 and p_cakildak > 0 and p_levant > 0:
+                            payload = {
+                                "date": str(d_date),
+                                "price_tombul": p_tombul,
+                                "price_cakildak": p_cakildak,
+                                "price_levant": p_levant,
+                                "rate_usd_try": r_usd,
+                                "rate_eur_try": r_eur,
+                                "created_by": st.session_state.user['email']
+                            }
                             try:
-                                supabase.table("market_prices").insert(data_to_insert).execute()
-                                st.success("Prices Saved!")
+                                supabase.table("market_prices").upsert(payload, on_conflict="date").execute()
+                                st.success("Entry Saved Successfully!")
                                 time.sleep(1); st.rerun()
                             except Exception as e: st.error(f"Error: {e}")
-                        else: st.warning("Enter at least one price.")
+                        else: st.warning("Please fill all price fields.")
                 
                 st.markdown("---")
                 col_h1, col_h2 = st.columns([3, 1])
                 col_h1.markdown("### 📜 Historical Data Input")
                 
-                # --- NEW SYNC BUTTON ---
                 if col_h2.button("🔄 Sync Real Historical Rates (Internet)"):
-                    with st.spinner("Fetching historical rates from Frankfurter API..."):
+                    with st.spinner("Fetching historical rates..."):
                         success, msg = sync_historical_rates_db()
                         if success: st.success(msg); time.sleep(2); st.rerun()
                         else: st.error(msg)
 
                 df_hist = get_market_prices()
                 if not df_hist.empty:
-                    disp_cols = [c for c in df_hist.columns if c != 'created_at']
-                    df_display = df_hist[disp_cols].copy()
-                    
-                    rename_map = {
-                        "hazelnut_type": "Type",
-                        "price_tl": "Price (TL)",
-                        "rate_usd_try": "USD/TRY Rate",
-                        "rate_eur_try": "EUR/TRY Rate",
-                        "date": "Date",
-                        "id": "ID",
-                        "created_by": "User"
-                    }
-                    df_display = df_display.rename(columns=rename_map)
-                    
+                    disp_cols = ["id", "date", "price_tombul", "price_cakildak", "price_levant", "rate_usd_try", "rate_eur_try", "created_by"]
+                    valid_cols = [c for c in disp_cols if c in df_hist.columns]
                     st.dataframe(
-                        df_display.sort_values(by='Date', ascending=False).style.format({
-                            "Price (TL)": "{:.2f}",
-                            "USD/TRY Rate": "{:.4f}",
-                            "EUR/TRY Rate": "{:.4f}"
-                        }), 
-                        use_container_width=True, 
-                        hide_index=True
+                        df_hist[valid_cols].sort_values(by='date', ascending=False).style.format({
+                            "price_tombul": "{:.2f}", "price_cakildak": "{:.2f}", "price_levant": "{:.2f}",
+                            "rate_usd_try": "{:.4f}", "rate_eur_try": "{:.4f}"
+                        }),
+                        use_container_width=True, hide_index=True
                     )
 
-    # MODÜL 1-6 (Existing Code ...)
+    # ... (Modules 1-6 code kept from previous context) ...
+    # Module 1
     elif module == MODULE_MAP[1]:
-        # (Paste previous Module 1 code here or keep existing)
-        st.title("Modül 1: Şube Ürün Girişi")
-        # ... (Abbreviated for brevity, logic remains identical to previous working versions)
-        # Please ensure you copy the FULL Module 1-6 logic from the previous turn if needed, 
-        # but for this specific request, the critical changes were in the PORTAL section above.
-        # I will include the full code block for completeness below to avoid confusion.
-        hazelnut_cat = "Kabuklu Fındık"
-        st.info("Bu modül Şubelerden yapılan **Kabuklu Fındık** alımları içindir.")
+        st.title("Modül 1: Şube Ürün Girişi"); hazelnut_cat = "Kabuklu Fındık"; st.info("Bu modül Şubelerden yapılan **Kabuklu Fındık** alımları içindir."); 
         with st.form("sube_hazelnut_form"):
             st.subheader("1. Müstahsil & Tedarikçi"); c1, c2, c3 = st.columns(3); supplier = c1.text_input("Tedarikçi Adı"); sup_type = c2.selectbox("Tedarikçi Tipi", ["Müstahsil", "Tüccar", "Şirket"]); id_num = c3.text_input("TCKN / VKN"); c4, c5, c6 = st.columns(3); city = c4.text_input("İl"); dist_in = c5.text_input("İlçe"); vill_in = c6.text_input("Köy / Mahalle"); c_cont, c_cert = st.columns(2); contact = c_cont.text_input("Telefon No"); cert_status = c_cert.selectbox("Sertifikasyon", ["Yok", "Organik", "Rainforest Alliance", "Avella"]); st.markdown("---"); c7, c8, c9 = st.columns(3); reg_type = c7.selectbox("Alım Şekli", ["Satın Alma", "Emanet"]); location = c8.selectbox("Teslimat Yeri", ["Fabrika", "Tarla", "Avella Şube"]); hazelnut_type = c9.selectbox("Fındık Çeşidi", ["Karışık", "Giresun Tombul", "Çakıldak", "Kara", "Sivri", "Palaz", "Badem", "Foşa", "Yomra"]); st.markdown("---"); price_gross=0.0; price_net_deducted=0.0; val_randiman=0.0; st.subheader("2. Kalite, Miktar ve Fiyatlandırma"); col_q1, col_q2 = st.columns([1, 1])
             with col_q1: st.markdown("**Fiziksel Analiz (Eksper)**"); w_sample = st.number_input("Kabuklu Numune Ağırlığı (g)", value=250.0); w_good = st.number_input("Sağlam İç (g)", 0.0); w_shriv = st.number_input("Buruşuk İç (g)", 0.0); w_vis_rot = st.number_input("Görünen Çürük (g)", 0.0); w_hid_rot = st.number_input("Gizli Çürük (g)", 0.0); w_tumor = st.number_input("Ur (g)", 0.0); s1, s2 = st.columns(2); w_over = s1.number_input("1. Numara İç - 13 mm üzeri (g)", 0.0); w_under = s2.number_input("Elek Altı İç - 9 mm altı (g)", 0.0); val_moist = st.number_input("Nem (%)", 0.0, 100.0, 5.0)
