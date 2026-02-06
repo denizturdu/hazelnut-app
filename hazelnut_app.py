@@ -50,31 +50,25 @@ def calculate_percentages(base_w, inputs):
 def get_market_prices():
     """Fetch all market prices sorted by date."""
     try:
-        response = supabase.table("market_prices").select("*").order("date", desc=False).execute()
+        response = supabase.table("market_prices").select("*").order("date", desc=False).limit(10000).execute()
         return pd.DataFrame(response.data)
     except:
         return pd.DataFrame()
 
 def get_live_rates():
     """Fetches live USD/TRY and EUR/TRY rates from a public API."""
-    # Defaults in case of failure
     rates = {"USD": 34.50, "EUR": 37.20} 
     try:
-        # Using a free public API (exchangerate-api)
         url = "https://open.er-api.com/v6/latest/TRY"
         resp = requests.get(url, timeout=2)
         if resp.status_code == 200:
             data = resp.json()
             if "rates" in data:
-                # API gives rates relative to TRY (e.g. 1 TRY = 0.03 USD)
-                # We want 1 USD = X TRY, so we invert
                 usd_val = data["rates"].get("USD")
                 eur_val = data["rates"].get("EUR")
-                
                 if usd_val: rates["USD"] = 1 / usd_val
                 if eur_val: rates["EUR"] = 1 / eur_val
-    except Exception as e:
-        # Fallback to defaults silently if API fails
+    except:
         pass
     return rates
 
@@ -192,7 +186,6 @@ def generate_offer_excel():
         worksheet.write(table_start_row, i, col_name, table_header_format)
         worksheet.set_column(i, i, 15)
     
-    # Adjust widths
     worksheet.set_column('B:B', 20)
     worksheet.set_column('C:C', 20)
     worksheet.set_column('D:D', 25)
@@ -207,60 +200,36 @@ def generate_offer_excel():
     worksheet_qual = workbook.add_worksheet('Quality Parameters')
     worksheet_qual.set_tab_color('#FFC000')
 
-    # Columns for Quality Sheet
     qual_ident_cols = ["Product Group (Linked)", "Type (Linked)", "Variety (Linked)", "Size (Linked)"]
-    
     qual_param_cols = [
-        "Target Humidity %",
-        "Maximum FFA %",
-        "Maximum Peroxide",
-        "Maximum Oversize %",
-        "Maximum Undersize %",
-        "Maximum Visible Rotten %",
-        "Maximum Hidden Rotten %",
-        "Maximum Visible Mouldy %",
-        "Maximum Hidden Mouldy %",
-        "Maximum Visible Tumorous %",
-        "Maximum Hidden Tumorous %",
-        "Maximum Insect Damaged %",
-        "Maximum Twin Kernels %",
-        "Maximum Mech. Damaged %",
-        "Maximum Broken %",
-        "Maximum Rancid %",
-        "Maximum Shrivelled %",
-        "Maximum Other Types %",
-        "Maximum Shell Pieces",
+        "Target Humidity %", "Maximum FFA %", "Maximum Peroxide", "Maximum Oversize %",
+        "Maximum Undersize %", "Maximum Visible Rotten %", "Maximum Hidden Rotten %",
+        "Maximum Visible Mouldy %", "Maximum Hidden Mouldy %", "Maximum Visible Tumorous %",
+        "Maximum Hidden Tumorous %", "Maximum Insect Damaged %", "Maximum Twin Kernels %",
+        "Maximum Mech. Damaged %", "Maximum Broken %", "Maximum Rancid %",
+        "Maximum Shrivelled %", "Maximum Other Types %", "Maximum Shell Pieces",
         "Maximum Foreign Matter"
     ]
-    
-    # --- DEFAULT VALUES ---
-    default_qual_values = [
-        "", 1, 1, 5, 5, 2, 2.5, 0.5, 0.5, 5, 5, 0, 2, 8, 4, 1, 2.5, 10, "0.01%", 0
-    ]
-    
+    default_qual_values = ["", 1, 1, 5, 5, 2, 2.5, 0.5, 0.5, 5, 5, 0, 2, 8, 4, 1, 2.5, 10, "0.01%", 0]
     all_qual_cols = qual_ident_cols + qual_param_cols
 
-    # Write Headers for Quality Sheet
     for i, col_name in enumerate(all_qual_cols):
         worksheet_qual.write(table_start_row, i, col_name, quality_header_format)
         worksheet_qual.set_column(i, i, 22) 
 
-    # --- DATA & LINKING LOGIC ---
     start_row_idx = table_start_row + 1
     end_row_idx = 100
 
     for r in range(start_row_idx, end_row_idx):
         xl_row = r + 1
-        # Linking Formulas
         worksheet_qual.write_formula(r, 0, f"='Offer Sheet'!B{xl_row}", linked_cell_format) 
         worksheet_qual.write_formula(r, 1, f"='Offer Sheet'!D{xl_row}", linked_cell_format) 
         worksheet_qual.write_formula(r, 2, f"='Offer Sheet'!E{xl_row}", linked_cell_format) 
         worksheet_qual.write_formula(r, 3, f"='Offer Sheet'!F{xl_row}", linked_cell_format) 
-        
         for i, val in enumerate(default_qual_values):
             worksheet_qual.write(r, 4 + i, val, input_format)
 
-    # --- REFERENCE DATA & VALIDATION (Main Sheet) ---
+    # --- REFERENCE DATA ---
     ref_sheet = workbook.add_worksheet('ReferenceData')
     ref_sheet.hide()
 
@@ -393,7 +362,7 @@ else:
             rate_usd = rates.get("USD", 34.0)
             rate_eur = rates.get("EUR", 37.0)
             
-            with st.expander("Live Currency Rates (Auto-fetched)", expanded=True):
+            with st.expander("Currency Settings (Live Rates Simulation)", expanded=True):
                 c1, c2 = st.columns(2)
                 c1.metric("USD/TRY", f"{rate_usd:.4f}")
                 c2.metric("EUR/TRY", f"{rate_eur:.4f}")
@@ -405,48 +374,49 @@ else:
             if not df_prices.empty:
                 df_prices['date'] = pd.to_datetime(df_prices['date'])
                 
-                # Filter last 365 days
-                # one_year_ago = datetime.now() - timedelta(days=365)
-                # df_prices = df_prices[df_prices['date'] >= one_year_ago]
+                # --- AUTO-SCALE LOGIC ---
+                # Determine max date in DB
+                max_db_date = df_prices['date'].max()
+                # Calculate start date for 1-year window
+                start_window = max_db_date - timedelta(days=365)
                 
                 hazelnut_types = ["Tombul", "Cakildak", "Levant"]
                 colors = {"Tombul": "firebrick", "Cakildak": "royalblue", "Levant": "green"}
                 
                 st.markdown("---")
                 
+                # Helper to build consistent charts
+                def build_chart(title, y_col, y_label, rate_divisor=1.0):
+                    fig = go.Figure()
+                    for h_type in hazelnut_types:
+                        sub = df_prices[df_prices['hazelnut_type'] == h_type].sort_values('date')
+                        if not sub.empty:
+                            y_vals = sub[y_col] / rate_divisor
+                            fig.add_trace(go.Scatter(x=sub['date'], y=y_vals, name=h_type, line=dict(color=colors[h_type], width=3)))
+                    
+                    # Modern Layout with Range Slider and Default Zoom
+                    fig.update_layout(
+                        title=title,
+                        xaxis=dict(
+                            title="Date",
+                            rangeslider=dict(visible=True), # Adds the scroller at bottom
+                            type="date",
+                            range=[start_window, max_db_date] # Sets initial zoom to last 1 year
+                        ),
+                        yaxis=dict(title=dict(text=y_label, font=dict(color="black"))), # Fixed titlefont error
+                        hovermode="x unified",
+                        height=500
+                    )
+                    return fig
+
                 # --- GRAPH 1: TL PRICES ---
-                st.subheader("1. Inshell Prices (TL/kg)")
-                fig_tl = go.Figure()
-                for h_type in hazelnut_types:
-                    sub = df_prices[df_prices['hazelnut_type'] == h_type].sort_values('date')
-                    if not sub.empty:
-                        fig_tl.add_trace(go.Scatter(x=sub['date'], y=sub['price_tl'], name=h_type, line=dict(color=colors[h_type], width=3)))
-                fig_tl.update_layout(xaxis_title="Date", yaxis_title="Price (TL)", hovermode="x unified", height=400)
-                st.plotly_chart(fig_tl, use_container_width=True)
+                st.plotly_chart(build_chart("1. Inshell Prices (TL/kg)", 'price_tl', "Price (TL)"), use_container_width=True)
                 
                 # --- GRAPH 2: USD PRICES ---
-                st.subheader("2. Inshell Prices (USD/kg)")
-                fig_usd = go.Figure()
-                for h_type in hazelnut_types:
-                    sub = df_prices[df_prices['hazelnut_type'] == h_type].sort_values('date')
-                    if not sub.empty:
-                        # Convert using LIVE rate
-                        usd_prices = sub['price_tl'] / rate_usd
-                        fig_usd.add_trace(go.Scatter(x=sub['date'], y=usd_prices, name=h_type, line=dict(color=colors[h_type], width=3)))
-                fig_usd.update_layout(xaxis_title="Date", yaxis_title="Price (USD)", hovermode="x unified", height=400)
-                st.plotly_chart(fig_usd, use_container_width=True)
+                st.plotly_chart(build_chart("2. Inshell Prices (USD/kg)", 'price_tl', "Price (USD)", rate_usd), use_container_width=True)
                 
                 # --- GRAPH 3: EUR PRICES ---
-                st.subheader("3. Inshell Prices (EUR/kg)")
-                fig_eur = go.Figure()
-                for h_type in hazelnut_types:
-                    sub = df_prices[df_prices['hazelnut_type'] == h_type].sort_values('date')
-                    if not sub.empty:
-                        # Convert using LIVE rate
-                        eur_prices = sub['price_tl'] / rate_eur
-                        fig_eur.add_trace(go.Scatter(x=sub['date'], y=eur_prices, name=h_type, line=dict(color=colors[h_type], width=3)))
-                fig_eur.update_layout(xaxis_title="Date", yaxis_title="Price (EUR)", hovermode="x unified", height=400)
-                st.plotly_chart(fig_eur, use_container_width=True)
+                st.plotly_chart(build_chart("3. Inshell Prices (EUR/kg)", 'price_tl', "Price (EUR)", rate_eur), use_container_width=True)
 
             else:
                 st.info("No market price data available yet.")
@@ -464,9 +434,9 @@ else:
                     
                     if st.form_submit_button("Save Prices"):
                         data_to_insert = []
-                        if p_tombul > 0: data_to_insert.append({"date": str(d_date), "hazelnut_type": "Tombul", "price_tl": p_tombul})
-                        if p_cakildak > 0: data_to_insert.append({"date": str(d_date), "hazelnut_type": "Cakildak", "price_tl": p_cakildak})
-                        if p_levant > 0: data_to_insert.append({"date": str(d_date), "hazelnut_type": "Levant", "price_tl": p_levant})
+                        if p_tombul > 0: data_to_insert.append({"date": str(d_date), "hazelnut_type": "Tombul", "price_tl": p_tombul, "created_by": st.session_state.user['email']})
+                        if p_cakildak > 0: data_to_insert.append({"date": str(d_date), "hazelnut_type": "Cakildak", "price_tl": p_cakildak, "created_by": st.session_state.user['email']})
+                        if p_levant > 0: data_to_insert.append({"date": str(d_date), "hazelnut_type": "Levant", "price_tl": p_levant, "created_by": st.session_state.user['email']})
                         
                         if data_to_insert:
                             try:
@@ -482,7 +452,13 @@ else:
                 st.markdown("### 📜 Historical Data Input")
                 df_hist = get_market_prices()
                 if not df_hist.empty:
-                    st.dataframe(df_hist.sort_values(by='created_at', ascending=False), use_container_width=True)
+                    # Hide created_at AND index
+                    disp_cols = [c for c in df_hist.columns if c != 'created_at']
+                    st.dataframe(
+                        df_hist[disp_cols].sort_values(by='date', ascending=False),
+                        use_container_width=True,
+                        hide_index=True
+                    )
 
     # ==========================
     # EXISTING MODULES 1-6
