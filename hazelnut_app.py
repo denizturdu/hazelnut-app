@@ -74,6 +74,24 @@ def get_market_prices():
         
     return df
 
+def get_live_rates():
+    """Fetches live USD/TRY and EUR/TRY rates from a public API."""
+    rates = {"USD": 34.50, "EUR": 37.20} # Fallback values
+    try:
+        url = "https://open.er-api.com/v6/latest/TRY"
+        resp = requests.get(url, timeout=2)
+        if resp.status_code == 200:
+            data = resp.json()
+            if "rates" in data:
+                usd_val = data["rates"].get("USD")
+                eur_val = data["rates"].get("EUR")
+                # API returns TRY per 1 unit of currency, so we invert it
+                if usd_val: rates["USD"] = 1 / usd_val
+                if eur_val: rates["EUR"] = 1 / eur_val
+    except:
+        pass
+    return rates
+
 def generate_offer_excel():
     """Generates the Offer Excel file in memory."""
     output = io.BytesIO()
@@ -340,6 +358,12 @@ else:
         if role == 'administrator' and len(tabs) > 1:
             with tabs[1]:
                 st.header("📝 Input Daily Market Prices")
+                
+                # Fetch live rates for auto-population
+                live_rates = get_live_rates()
+                default_usd_rate = live_rates.get("USD", 0.0)
+                default_eur_rate = live_rates.get("EUR", 0.0)
+
                 with st.form("price_input_form"):
                     d_date = st.date_input("Date", value=datetime.now())
                     c1, c2, c3 = st.columns(3)
@@ -348,12 +372,14 @@ else:
                     p_levant = c3.number_input("Levant (TL/kg)", min_value=0.0, step=0.5)
                     st.markdown("---")
                     c4, c5 = st.columns(2)
-                    r_usd = c4.number_input("USD/TRY Rate (Optional)", min_value=0.0, step=0.01, format="%.4f")
-                    r_eur = c5.number_input("EUR/TRY Rate (Optional)", min_value=0.0, step=0.01, format="%.4f")
+                    # Auto-populate with live rates
+                    r_usd = c4.number_input("USD/TRY Rate", min_value=0.0, step=0.01, format="%.4f", value=default_usd_rate)
+                    r_eur = c5.number_input("EUR/TRY Rate", min_value=0.0, step=0.01, format="%.4f", value=default_eur_rate)
                     
                     if st.form_submit_button("Save Prices"):
                         data_to_insert = []
                         base_entry = {"date": str(d_date), "created_by": st.session_state.user['email']}
+                        # Save rates if they are greater than 0
                         if r_usd > 0: base_entry["rate_usd_try"] = r_usd
                         if r_eur > 0: base_entry["rate_eur_try"] = r_eur
                         
@@ -397,8 +423,7 @@ else:
             st.markdown("---"); st.subheader("3. Ödeme ve Kayıt"); f1, f2, f3 = st.columns(3); doc_num = f1.text_input("Makbuz / Fatura No"); pay_amount = f2.number_input("Ödenen Tutar", 0.0); pay_method = f3.selectbox("Ödeme Yöntemi", ["Nakit", "Banka", "Çek"]); 
             if reg_type != "Emanet": st.metric("Kalan Bakiye", f"{total_val - pay_amount:,.2f} TL")
             if st.form_submit_button("✅ Şube Girişini Kaydet"):
-                payload = {"created_by": st.session_state.user['email'], "status": "Pending Arrival", "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type, "id_number": id_num, "city": city, "district": dist_in, "village": vill_in, "phone_number": contact, "cert_status": cert_status, "reg_type": reg_type, "location": location, "item_type": hazelnut_type, "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num, "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount, "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag, "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv, "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over, "moisture": val_moist, "calculated_randiman": val_randiman, "gross_price_50": price_gross, "net_price_50": net_price_50, "actual_unit_price": unit_price}
-                insert_record("purchases", payload); st.success("Şube Girişi Kaydedildi!")
+                payload = {"created_by": st.session_state.user['email'], "status": "Pending Arrival", "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type, "id_number": id_num, "city": city, "district": dist_in, "village": vill_in, "phone_number": contact, "cert_status": cert_status, "reg_type": reg_type, "location": location, "item_type": hazelnut_type, "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num, "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount, "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag, "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv, "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over, "moisture": val_moist, "calculated_randiman": val_randiman, "gross_price_50": price_gross, "net_price_50": net_price_50, "actual_unit_price": unit_price}; insert_record("purchases", payload); st.success("Şube Girişi Kaydedildi!")
 
     elif module == MODULE_MAP[2]:
         st.title("Modül 2: Fabrika Ürün Girişi"); tab_findik, tab_malzeme, tab_genel = st.tabs(["🌰 Fındık Alımı", "📦 Malzeme Alımı", "⚙️ Makine & Hizmet"])
