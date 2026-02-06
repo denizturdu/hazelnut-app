@@ -41,6 +41,12 @@ def calculate_randiman(sample_w, good, shriv):
     if sample_w == 0: return 0.0
     return ((good + (shriv / 2)) / sample_w) * 100
 
+def calculate_percentages(base_w, inputs):
+    results = {}
+    if base_w == 0: return {k: 0.0 for k in inputs}
+    for k, v in inputs.items(): results[k] = (v / base_w) * 100
+    return results
+
 def get_market_prices():
     """Fetch ALL market prices, including exchange rates."""
     all_rows = []
@@ -330,9 +336,9 @@ else:
                                 y_vals = sub['price_tl']
                             elif mode_type == 'USD':
                                 # Use row-specific rate if available, fallback to 34.0
-                                y_vals = sub.apply(lambda row: row['price_tl'] / (row['rate_usd_try'] if pd.notnull(row.get('rate_usd_try')) else 34.0), axis=1)
+                                y_vals = sub.apply(lambda row: row['price_tl'] / (row['rate_usd_try'] if pd.notnull(row.get('rate_usd_try')) and row['rate_usd_try'] > 0 else 34.0), axis=1)
                             elif mode_type == 'EUR':
-                                y_vals = sub.apply(lambda row: row['price_tl'] / (row['rate_eur_try'] if pd.notnull(row.get('rate_eur_try')) else 37.0), axis=1)
+                                y_vals = sub.apply(lambda row: row['price_tl'] / (row['rate_eur_try'] if pd.notnull(row.get('rate_eur_try')) and row['rate_eur_try'] > 0 else 37.0), axis=1)
                             
                             fig.add_trace(go.Scatter(
                                 x=sub['date'], y=y_vals, name=h_type,
@@ -398,8 +404,32 @@ else:
                 st.markdown("### 📜 Historical Data Input")
                 df_hist = get_market_prices()
                 if not df_hist.empty:
+                    # Rename columns for better readability & ensure all are present
                     disp_cols = [c for c in df_hist.columns if c != 'created_at']
-                    st.dataframe(df_hist[disp_cols].sort_values(by='date', ascending=False), use_container_width=True, hide_index=True)
+                    df_display = df_hist[disp_cols].copy()
+                    
+                    # Rename mapping
+                    rename_map = {
+                        "hazelnut_type": "Type",
+                        "price_tl": "Price (TL)",
+                        "rate_usd_try": "USD/TRY Rate",
+                        "rate_eur_try": "EUR/TRY Rate",
+                        "date": "Date",
+                        "id": "ID",
+                        "created_by": "User"
+                    }
+                    df_display = df_display.rename(columns=rename_map)
+                    
+                    # Apply Formatting via Styler
+                    st.dataframe(
+                        df_display.sort_values(by='Date', ascending=False).style.format({
+                            "Price (TL)": "{:.2f}",
+                            "USD/TRY Rate": "{:.4f}",
+                            "EUR/TRY Rate": "{:.4f}"
+                        }), 
+                        use_container_width=True, 
+                        hide_index=True
+                    )
 
     # MODÜL 1-6 (Existing Code ...)
     elif module == MODULE_MAP[1]:
