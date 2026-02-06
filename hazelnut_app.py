@@ -60,7 +60,7 @@ def get_market_prices():
 
 def get_live_rates():
     """Fetches live USD/TRY and EUR/TRY rates from a public API."""
-    rates = {"USD": 34.50, "EUR": 37.20} 
+    rates = {"USD": 34.50, "EUR": 37.20} # Fallback
     try:
         url = "https://open.er-api.com/v6/latest/TRY"
         resp = requests.get(url, timeout=2)
@@ -239,6 +239,7 @@ else:
                                 line=dict(color=colors[h_type], width=3),
                                 mode='lines', fill=None
                             ))
+                    
                     fig.update_layout(
                         title=title,
                         xaxis=dict(title="Date", rangeslider=dict(visible=True), type="date", range=[start_window, max_db_date]),
@@ -357,19 +358,21 @@ else:
                 st.markdown("---"); st.subheader("3. Ödeme ve Kayıt"); f1, f2, f3 = st.columns(3); doc_num = f1.text_input("Makbuz / Fatura No"); pay_amount = f2.number_input("Ödenen Tutar", 0.0); pay_method = f3.selectbox("Ödeme Yöntemi", ["Nakit", "Banka", "Çek"]); 
                 if reg_type != "Emanet": st.metric("Kalan Bakiye", f"{total_val - pay_amount:,.2f} TL")
                 if st.form_submit_button("✅ Fabrika Girişini Kaydet"):
-                    payload = {"created_by": st.session_state.user['email'], "status": "Pending Arrival", "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type, "id_number": id_num, "city": city, "district": dist_in, "village": vill_in, "phone_number": contact, "cert_status": cert_status, "reg_type": reg_type, "location": location, "item_type": hazelnut_type, "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num, "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount, "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag, "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv, "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over, "moisture": val_moist, "calculated_randiman": val_randiman, "gross_price_50": price_gross, "net_price_50": net_price_50, "actual_unit_price": unit_price}; insert_record("purchases", payload); st.success("Fabrika Girişi Kaydedildi!")
+                    payload = {"created_by": st.session_state.user['email'], "status": "Pending Arrival", "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type, "id_number": id_num, "city": city, "district": dist_in, "village": vill_in, "phone_number": contact, "cert_status": cert_status, "reg_type": reg_type, "location": location, "item_type": hazelnut_type, "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num, "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount, "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag, "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv, "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over, "moisture": val_moist, "calculated_randiman": val_randiman, "gross_price_50": price_gross, "actual_unit_price": price_net_deducted}; insert_record("purchases", payload); st.success("Fabrika Girişi Kaydedildi!")
         with tab_malzeme:
             st.subheader("Malzeme Seçimi"); material_cats = ["Ambalaj Malzemeleri", "Bakım Malzemeleri", "Ofis Malzemeleri", "Temizlik Malzemeleri", "Eşantiyon & Hediye", "İş Kıyafetleri", "Gıda ve Mutfak", "Diğer"]; c_cat, c_item = st.columns(2); selected_mat_cat = c_cat.selectbox("Kategori", material_cats, key="mat_cat_fab"); 
             try: response = supabase.table("material_definitions").select("*").eq("category", selected_mat_cat).execute(); items_data = response.data; item_names = [row['item_name'] for row in items_data]
             except: items_data = []; item_names = []
             if item_names: selected_item_name = c_item.selectbox("Malzeme Seç", item_names, key="mat_item_fab"); selected_item_data = next((item for item in items_data if item["item_name"] == selected_item_name), None)
             else: c_item.warning("Tanımlı malzeme yok."); selected_item_name = c_item.text_input("Manuel Giriş", key="mat_manual_fab")
-            with st.form("fab_material_purchase"): supplier = st.text_input("Tedarikçi"); c3, c4 = st.columns(2); qty = c3.number_input("Miktar", min_value=1.0); price = c4.number_input("Tutar (TL)", min_value=0.0); 
-            if st.form_submit_button("✅ Kaydet"): payload = {"category": "Malzeme", "supplier": supplier, "item_type": selected_item_name, "item_sub_type": selected_mat_cat, "qty_ordered": qty, "total_value": price, "status": "Pending Arrival", "created_by": st.session_state.user['email']}; insert_record("purchases", payload); st.success("Kaydedildi!")
+            with st.form("fab_material_purchase"): 
+                supplier = st.text_input("Tedarikçi"); c3, c4 = st.columns(2); qty = c3.number_input("Miktar", min_value=1.0); price = c4.number_input("Tutar (TL)", min_value=0.0); 
+                if st.form_submit_button("✅ Kaydet"): payload = {"category": "Malzeme", "supplier": supplier, "item_type": selected_item_name, "item_sub_type": selected_mat_cat, "qty_ordered": qty, "total_value": price, "status": "Pending Arrival", "created_by": st.session_state.user['email']}; insert_record("purchases", payload); st.success("Kaydedildi!")
         with tab_genel:
             st.subheader("Genel Alım"); general_type = st.selectbox("Tür", ["Makine", "Hizmet"], key="gen_type_fab"); 
-            with st.form("fab_gen_form"): c1, c2 = st.columns(2); supplier = c1.text_input("Firma"); desc = c2.text_input("Açıklama"); c3, c4 = st.columns(2); qty = c3.number_input("Miktar", 1.0); price = c4.number_input("Tutar", 0.0); 
-            if st.form_submit_button("✅ Kaydet"): insert_record("purchases", {"category": general_type, "supplier": supplier, "item_type": desc, "qty_ordered": qty, "total_value": price, "status": "Pending Arrival", "created_by": st.session_state.user['email']}); st.success("Kaydedildi!")
+            with st.form("fab_gen_form"): 
+                c1, c2 = st.columns(2); supplier = c1.text_input("Firma"); desc = c2.text_input("Açıklama"); c3, c4 = st.columns(2); qty = c3.number_input("Miktar", 1.0); price = c4.number_input("Tutar", 0.0); 
+                if st.form_submit_button("✅ Kaydet"): insert_record("purchases", {"category": general_type, "supplier": supplier, "item_type": desc, "qty_ordered": qty, "total_value": price, "status": "Pending Arrival", "created_by": st.session_state.user['email']}); st.success("Kaydedildi!")
 
     elif module == MODULE_MAP[3]:
         st.title("Modül 3: Mal Kabul (Kantar)"); 
@@ -398,14 +401,16 @@ else:
             with st.expander("Listeyi Gör"): data = supabase.table("material_definitions").select("*").execute().data; st.dataframe(pd.DataFrame(data), use_container_width=True)
             st.markdown("---"); st.write("### ➕ Ekle / ✏️ Düzenle / 🗑️ Sil"); action = st.radio("İşlem", ["Ekle", "Düzenle", "Sil"], horizontal=True)
             if action == "Ekle":
-                with st.form("add_mat"): c1, c2 = st.columns(2); cat = c1.selectbox("Kategori", cats); name = c2.text_input("Ad"); u1, u2 = st.columns(2); unit = u1.selectbox("Birim", units); uq = u2.number_input("Birim İçi Adet", 1.0); nt = st.text_area("Notlar"); o1, o2, o3 = st.columns(3); dim_o = o1.text_input("Dış Boyutlar"); dim_i = o2.text_input("İç Boyutlar"); w_g = o3.number_input("Ağırlık (g)", 0.0); g1, g2, g3 = st.columns(3); use = g1.text_input("Kullanım"); mat = g2.text_input("Materyal"); oth = g3.text_input("Diğer"); 
-                if st.form_submit_button("Kaydet"): insert_record("material_definitions", {"category": cat, "item_name": name, "sales_unit": unit, "unit_quantity": uq, "notes": nt, "dim_outer": dim_o, "dim_inner": dim_i, "unit_weight_g": w_g, "use_case": use, "mat_type": mat, "other_specs": oth}); st.success("Eklendi!")
+                with st.form("add_mat"): 
+                    c1, c2 = st.columns(2); cat = c1.selectbox("Kategori", cats); name = c2.text_input("Ad"); u1, u2 = st.columns(2); unit = u1.selectbox("Birim", units); uq = u2.number_input("Birim İçi Adet", 1.0); nt = st.text_area("Notlar"); o1, o2, o3 = st.columns(3); dim_o = o1.text_input("Dış Boyutlar"); dim_i = o2.text_input("İç Boyutlar"); w_g = o3.number_input("Ağırlık (g)", 0.0); g1, g2, g3 = st.columns(3); use = g1.text_input("Kullanım"); mat = g2.text_input("Materyal"); oth = g3.text_input("Diğer"); 
+                    if st.form_submit_button("Kaydet"): insert_record("material_definitions", {"category": cat, "item_name": name, "sales_unit": unit, "unit_quantity": uq, "notes": nt, "dim_outer": dim_o, "dim_inner": dim_i, "unit_weight_g": w_g, "use_case": use, "mat_type": mat, "other_specs": oth}); st.success("Eklendi!")
             elif action == "Düzenle":
                 sel_cat = st.selectbox("Kategori", cats); items = supabase.table("material_definitions").select("*").eq("category", sel_cat).execute().data
                 if items:
                     target = st.selectbox("Malzeme", [i['item_name'] for i in items]); row = next(i for i in items if i['item_name'] == target); 
-                    with st.form("edit_mat"): new_name = st.text_input("Ad", row['item_name']); e1, e2, e3 = st.columns(3); emat = e1.text_input("Materyal", row.get('mat_type')); euse = e2.text_input("Kullanım", row.get('use_case')); eunit = e3.selectbox("Birim", units, index=units.index(row.get('sales_unit')) if row.get('sales_unit') in units else 0); enote = st.text_area("Notlar", row.get('notes')); 
-                    if st.form_submit_button("Güncelle"): supabase.table("material_definitions").update({"item_name": new_name, "mat_type": emat, "use_case": euse, "sales_unit": eunit, "notes": enote}).eq("id", row['id']).execute(); st.success("Güncellendi!")
+                    with st.form("edit_mat"): 
+                        new_name = st.text_input("Ad", row['item_name']); e1, e2, e3 = st.columns(3); emat = e1.text_input("Materyal", row.get('mat_type')); euse = e2.text_input("Kullanım", row.get('use_case')); eunit = e3.selectbox("Birim", units, index=units.index(row.get('sales_unit')) if row.get('sales_unit') in units else 0); enote = st.text_area("Notlar", row.get('notes')); 
+                        if st.form_submit_button("Güncelle"): supabase.table("material_definitions").update({"item_name": new_name, "mat_type": emat, "use_case": euse, "sales_unit": eunit, "notes": enote}).eq("id", row['id']).execute(); st.success("Güncellendi!")
             elif action == "Sil":
                 sel_cat = st.selectbox("Kategori (Sil)", cats); items = supabase.table("material_definitions").select("*").eq("category", sel_cat).execute().data
                 if items:
