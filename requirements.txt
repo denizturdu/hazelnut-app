@@ -3,3 +3,4 @@ supabase
 pandas
 bcrypt
 XlsxWriter
+plotly
