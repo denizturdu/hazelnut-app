@@ -48,12 +48,32 @@ def calculate_percentages(base_w, inputs):
     return results
 
 def get_market_prices():
-    """Fetch all market prices sorted by date."""
-    try:
-        response = supabase.table("market_prices").select("*").order("date", desc=False).limit(10000).execute()
-        return pd.DataFrame(response.data)
-    except:
-        return pd.DataFrame()
+    """Fetch ALL market prices sorted by date using pagination to bypass 1000 row limit."""
+    all_rows = []
+    start = 0
+    batch_size = 1000
+    
+    while True:
+        try:
+            # Fetch range start to start+batch_size-1
+            response = supabase.table("market_prices").select("*").order("date", desc=False).range(start, start + batch_size - 1).execute()
+            batch = response.data
+            
+            if not batch:
+                break
+                
+            all_rows.extend(batch)
+            
+            # If we got fewer rows than requested, we've reached the end
+            if len(batch) < batch_size:
+                break
+                
+            start += batch_size
+        except Exception as e:
+            st.error(f"Data fetch error: {e}")
+            break
+            
+    return pd.DataFrame(all_rows)
 
 def get_live_rates():
     """Fetches live USD/TRY and EUR/TRY rates from a public API."""
@@ -375,9 +395,7 @@ else:
                 df_prices['date'] = pd.to_datetime(df_prices['date'])
                 
                 # --- AUTO-SCALE LOGIC ---
-                # Determine max date in DB
                 max_db_date = df_prices['date'].max()
-                # Calculate start date for 1-year window
                 start_window = max_db_date - timedelta(days=365)
                 
                 hazelnut_types = ["Tombul", "Cakildak", "Levant"]
@@ -394,7 +412,6 @@ else:
                             y_vals = sub[y_col] / rate_divisor
                             fig.add_trace(go.Scatter(x=sub['date'], y=y_vals, name=h_type, line=dict(color=colors[h_type], width=3)))
                     
-                    # Modern Layout with Range Slider and Default Zoom
                     fig.update_layout(
                         title=title,
                         xaxis=dict(
@@ -403,7 +420,7 @@ else:
                             type="date",
                             range=[start_window, max_db_date] # Sets initial zoom to last 1 year
                         ),
-                        yaxis=dict(title=dict(text=y_label, font=dict(color="black"))), # Fixed titlefont error
+                        yaxis=dict(title=dict(text=y_label, font=dict(color="black"))),
                         hovermode="x unified",
                         height=500
                     )
