@@ -76,52 +76,6 @@ def get_live_rates():
         pass
     return rates
 
-def sync_historical_rates_db():
-    """Fetches historical rates from Frankfurter API and updates Supabase rows."""
-    try:
-        df = get_market_prices()
-        if df.empty:
-            return False, "No data to sync."
-        
-        min_date = df['date'].min().strftime('%Y-%m-%d')
-        
-        # Fetch EUR -> TRY
-        url_eur = f"https://api.frankfurter.app/{min_date}..?from=EUR&to=TRY"
-        resp_eur = requests.get(url_eur)
-        data_eur = resp_eur.json().get('rates', {})
-
-        # Fetch USD -> TRY
-        url_usd = f"https://api.frankfurter.app/{min_date}..?from=USD&to=TRY"
-        resp_usd = requests.get(url_usd)
-        data_usd = resp_usd.json().get('rates', {})
-
-        updates = []
-        for index, row in df.iterrows():
-            date_str = row['date'].strftime('%Y-%m-%d')
-            
-            rate_eur = data_eur.get(date_str, {}).get('TRY')
-            rate_usd = data_usd.get(date_str, {}).get('TRY')
-            
-            # If valid rates found, queue an update
-            if rate_eur or rate_usd:
-                update_payload = {'id': int(row['id'])}
-                if rate_eur: update_payload['rate_eur_try'] = rate_eur
-                if rate_usd: update_payload['rate_usd_try'] = rate_usd
-                updates.append(update_payload)
-
-        if updates:
-            chunk_size = 200 
-            for i in range(0, len(updates), chunk_size):
-                chunk = updates[i:i + chunk_size]
-                supabase.table("market_prices").upsert(chunk).execute()
-            
-            return True, f"Successfully synced {len(updates)} rows with real bank rates."
-        else:
-            return False, "No matching dates found in API or connection failed."
-
-    except Exception as e:
-        return False, f"Sync Error: {str(e)}"
-
 def generate_offer_excel():
     """Generates the Offer Excel file in memory."""
     output = io.BytesIO()
@@ -335,16 +289,7 @@ else:
                             except Exception as e: st.error(f"Error: {e}")
                         else: st.warning("Please fill all price fields.")
                 
-                st.markdown("---")
-                col_h1, col_h2 = st.columns([3, 1])
-                col_h1.markdown("### 📜 Historical Data Input")
-                
-                if col_h2.button("🔄 Sync Real Historical Rates (Internet)"):
-                    with st.spinner("Fetching historical rates..."):
-                        success, msg = sync_historical_rates_db()
-                        if success: st.success(msg); time.sleep(2); st.rerun()
-                        else: st.error(msg)
-
+                st.markdown("### 📜 Historical Data Input")
                 df_hist = get_market_prices()
                 if not df_hist.empty:
                     disp_cols = ["id", "date", "price_tombul", "price_cakildak", "price_levant", "rate_usd_try", "rate_eur_try", "created_by"]
