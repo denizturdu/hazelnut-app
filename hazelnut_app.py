@@ -221,11 +221,11 @@ def generate_offer_excel():
 
     for r in range(start_row_idx, end_row_idx):
         xl_row = r + 1
-        # Linking Formulas (Indices shifted due to inserted columns)
-        worksheet_qual.write_formula(r, 0, f"='Offer Sheet'!B{xl_row}", linked_cell_format) # Group
-        worksheet_qual.write_formula(r, 1, f"='Offer Sheet'!D{xl_row}", linked_cell_format) # Type
-        worksheet_qual.write_formula(r, 2, f"='Offer Sheet'!E{xl_row}", linked_cell_format) # Variety
-        worksheet_qual.write_formula(r, 3, f"='Offer Sheet'!F{xl_row}", linked_cell_format) # Size
+        # Linking Formulas
+        worksheet_qual.write_formula(r, 0, f"='Offer Sheet'!B{xl_row}", linked_cell_format) 
+        worksheet_qual.write_formula(r, 1, f"='Offer Sheet'!D{xl_row}", linked_cell_format) 
+        worksheet_qual.write_formula(r, 2, f"='Offer Sheet'!E{xl_row}", linked_cell_format) 
+        worksheet_qual.write_formula(r, 3, f"='Offer Sheet'!F{xl_row}", linked_cell_format) 
         
         for i, val in enumerate(default_qual_values):
             worksheet_qual.write(r, 4 + i, val, input_format)
@@ -322,16 +322,13 @@ else:
     # --- MENU GENERATION ---
     available_menu_names = []
     
-    # Logic: Customers see ONLY Portal. Admin sees Portal + Modules. Employees see Modules.
     if role == 'customer':
         available_menu_names = [CUSTOMER_PORTAL_NAME]
-    
     elif role == 'administrator':
-        available_menu_names = [CUSTOMER_PORTAL_NAME] # Admin sees portal first
+        available_menu_names = [CUSTOMER_PORTAL_NAME] 
         for mod_id in [1, 2, 3, 4, 5, 6]:
             if mod_id in MODULE_MAP:
                 available_menu_names.append(MODULE_MAP[mod_id])
-    
     elif role == 'employee':
         allowed_ids = user.get('allowed_modules', [])
         if allowed_ids is None: allowed_ids = []
@@ -351,7 +348,6 @@ else:
     if module == CUSTOMER_PORTAL_NAME:
         st.title(CUSTOMER_PORTAL_NAME)
         
-        # Tabs logic
         portal_tabs = ["Inshell Hazelnuts and Market Updates"]
         if role == 'administrator':
             portal_tabs.append("Avella Market Price Input (Admin)")
@@ -362,7 +358,6 @@ else:
         with tabs[0]:
             st.header("🌰 Market Updates & Inshell Prices")
             
-            # Currency Input Simulation (Simulating 'Time of Login')
             with st.expander("Currency Settings (Live Rates Simulation)", expanded=True):
                 c1, c2 = st.columns(2)
                 rate_usd = c1.number_input("Current USD/TL Rate", value=34.50, min_value=1.0, format="%.2f")
@@ -370,66 +365,42 @@ else:
             
             st.caption(f"Charts below show historical TL prices converted using TODAY's rates: 1 USD = {rate_usd} TL, 1 EUR = {rate_eur} TL.")
             
-            # Fetch Data
             df_prices = get_market_prices()
             
             if not df_prices.empty:
-                # Ensure date format
                 df_prices['date'] = pd.to_datetime(df_prices['date'])
-                
-                # Filter last 365 days
                 one_year_ago = datetime.now() - timedelta(days=365)
                 df_prices = df_prices[df_prices['date'] >= one_year_ago]
-                
                 hazelnut_types = ["Tombul", "Cakildak", "Levant"]
                 
                 for h_type in hazelnut_types:
                     st.subheader(f"{h_type} Inshell Price Trends")
-                    
                     df_subset = df_prices[df_prices['hazelnut_type'] == h_type].sort_values('date')
                     
                     if not df_subset.empty:
-                        # Create 3 traces
-                        # Trace 1: TL (Left Axis)
                         trace_tl = go.Scatter(
-                            x=df_subset['date'], 
-                            y=df_subset['price_tl'], 
-                            name=f"{h_type} (TL)",
-                            line=dict(color='firebrick', width=3),
-                            mode='lines+markers'
+                            x=df_subset['date'], y=df_subset['price_tl'], name=f"{h_type} (TL)",
+                            line=dict(color='firebrick', width=3), mode='lines+markers'
                         )
-                        
-                        # Trace 2: USD (Right Axis)
                         trace_usd = go.Scatter(
-                            x=df_subset['date'], 
-                            y=df_subset['price_tl'] / rate_usd, 
-                            name=f"{h_type} (USD)",
-                            line=dict(color='royalblue', width=2, dash='dot'),
-                            yaxis='y2'
+                            x=df_subset['date'], y=df_subset['price_tl'] / rate_usd, name=f"{h_type} (USD)",
+                            line=dict(color='royalblue', width=2, dash='dot'), yaxis='y2'
                         )
-                        
-                        # Trace 3: EUR (Right Axis)
                         trace_eur = go.Scatter(
-                            x=df_subset['date'], 
-                            y=df_subset['price_tl'] / rate_eur, 
-                            name=f"{h_type} (EUR)",
-                            line=dict(color='green', width=2, dash='dot'),
-                            yaxis='y2'
+                            x=df_subset['date'], y=df_subset['price_tl'] / rate_eur, name=f"{h_type} (EUR)",
+                            line=dict(color='green', width=2, dash='dot'), yaxis='y2'
                         )
                         
                         fig = go.Figure(data=[trace_tl, trace_usd, trace_eur])
-                        
-                        # Layout with Dual Y-Axis
+                        # FIXED: Use nested dictionaries for title/font to ensure compatibility
                         fig.update_layout(
                             xaxis=dict(title="Date"),
                             yaxis=dict(
-                                title="Price (TL)",
-                                titlefont=dict(color="firebrick"),
+                                title=dict(text="Price (TL)", font=dict(color="firebrick")),
                                 tickfont=dict(color="firebrick")
                             ),
                             yaxis2=dict(
-                                title="Price (USD / EUR)",
-                                titlefont=dict(color="royalblue"),
+                                title=dict(text="Price (USD / EUR)", font=dict(color="royalblue")),
                                 tickfont=dict(color="royalblue"),
                                 overlaying="y",
                                 side="right"
@@ -455,7 +426,6 @@ else:
                     p_levant = c3.number_input("Levant (TL/kg)", min_value=0.0, step=0.5)
                     
                     if st.form_submit_button("Save Prices"):
-                        # Insert 3 rows
                         data_to_insert = []
                         if p_tombul > 0: data_to_insert.append({"date": str(d_date), "hazelnut_type": "Tombul", "price_tl": p_tombul})
                         if p_cakildak > 0: data_to_insert.append({"date": str(d_date), "hazelnut_type": "Cakildak", "price_tl": p_cakildak})
