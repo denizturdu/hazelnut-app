@@ -60,7 +60,7 @@ def get_market_prices():
 
 def get_live_rates():
     """Fetches live USD/TRY and EUR/TRY rates from a public API."""
-    rates = {"USD": 34.50, "EUR": 37.20} # Fallback
+    rates = {"USD": 34.50, "EUR": 37.20} 
     try:
         url = "https://open.er-api.com/v6/latest/TRY"
         resp = requests.get(url, timeout=2)
@@ -239,7 +239,6 @@ else:
                                 line=dict(color=colors[h_type], width=3),
                                 mode='lines', fill=None
                             ))
-                    
                     fig.update_layout(
                         title=title,
                         xaxis=dict(title="Date", rangeslider=dict(visible=True), type="date", range=[start_window, max_db_date]),
@@ -423,7 +422,13 @@ else:
                 logs_response = supabase.table("login_logs").select("*").order("login_at", desc=True).limit(1000).execute()
                 if logs_response.data:
                     df_logs = pd.DataFrame(logs_response.data)
-                    # Rename for display
+                    
+                    # FIX: Format the date
+                    # Convert to datetime object
+                    df_logs['login_at'] = pd.to_datetime(df_logs['login_at'])
+                    # Format to string (YYYY-MM-DD HH:MM:SS)
+                    df_logs['login_at'] = df_logs['login_at'].dt.strftime('%Y-%m-%d %H:%M:%S')
+                    
                     df_logs.rename(columns={"email": "Kullanıcı", "login_at": "Tarih/Saat"}, inplace=True)
                     st.dataframe(df_logs[["Kullanıcı", "Tarih/Saat"]], use_container_width=True)
                 else:
