@@ -85,17 +85,18 @@ def log_login(email):
 def generate_offer_excel():
     """Generates the Offer Excel file in memory."""
     output = io.BytesIO()
+    
     data = {
         "Categories": ["Nuts", "Dried Fruit", "Oil", "Chocolate"],
-        "Product_Groups": ["Hazelnuts", "Walnuts", "Pistachios", "Almonds", "Peanuts"],
-        "Product_Types": ["Inshell", "Natural Kernels", "Blanched Kernels", "Roasted Kernels"],
-        "Varieties": ["Tombul", "Levant", "Cakildak"],
-        "Sizes": ["11-13mm", "13-15mm", "9-11mm"],
-        "Packaging": ["Bigbag", "Sack", "Vacuum"],
-        "Currencies": ["USD", "EUR", "TL"],
-        "Incoterms": ["FCA", "DAP", "CIF"]
-    } # Simplified for brevity, logic remains valid
-    
+        "Product_Groups": ["Hazelnuts", "Walnuts", "Pistachios", "Almonds", "Peanuts", "Cashew Nuts", "Brazil Nuts", "Pine Nuts", "Macadamia Nuts", "Pecan Nuts", "Apricots", "Raisins", "Figs", "Plums", "Hazelnut Oil", "Olive Oil", "Hazelnut Cream", "Hazelnut Crunch", "Pistachio Cream", "Pistachio Crunch"],
+        "Product_Types": ["Inshell", "Inshell - Harmanici", "Natural Kernels - Whole", "Natural Kernels - Shrivelled", "Natural Kernels - Scratched", "Natural Kernels - Broken", "Natural Kernels - Rotten", "Natural Kernels - Mix Reject", "Natural and Slivered", "Blanched Kernels - Whole", "Blanched and Chopped Pieces", "Blanched and Slivered", "Blanched and Diced", "Blanched and Scratched", "Blanched and Broken", "Blanched Flour", "Roasted Kernels - Whole", "Roasted and Chopped Pieces", "Roasted and Slivered", "Roasted and Diced", "Roasted and Scratched", "Roasted and Broken", "Roasted Flour", "Light Paste", "Dark Paste", "Medium Paste", "Shells"],
+        "Varieties": ["Karışık", "Giresun Tombul", "Çakıldak", "Kara", "Sivri", "Palaz", "Badem", "Foşa", "Yomra", "Nonpareil", "Carmel", "Butte", "Padre", "Sonora", "Monterey", "Marcona", "Guara", "Kirmizi", "Uzun", "Halebi", "Siirt", "Ohadi", "Fandoghi", "Kalleh Ghouchi", "Ahmad Aghaei", "Akbari", "Kerman", "Golden Hills", "Lost Hills", "Kalehghouchi", "Gumdrop", "Chandler", "Hartley", "Howard", "Franquette", "Serr", "Tulare", "Pedro", "Şebin", "Bilecik", "Yalova", "Kaman", "Kaplan", "Şen", "Tokat"],
+        "Sizes": ["Mixed Size", "21mm+", "20mm+", "19mm+", "18mm+", "17mm+", "16mm+", "14-16mm", "13-15mm", "15-16mm", "14-15mm", "13-14mm", "12-14mm", "12-13mm", "11-13mm", "11-12mm", "10-12mm", "10-11mm", "9-11mm", "9-10mm", "9mm-", "9mm+", "0-2mm", "1-3mm", "2-4mm", "4-6mm", "5-7mm", "6-8mm", "7-11mm", "3-11mm", "5-11mm", "15μ", "18μ", "20μ", "21μ", "22μ", "23μ", "24μ", "25μ", "26μ", "27μ", "28μ", "29μ", "30μ", "31μ", "32μ", "33μ", "34μ", "35μ", "18/20 mm", "20/22 mm", "22/24 mm", "24/26 mm", "26/28 mm", "28/30 mm", "30/32 mm", "32/34 mm", "34/36 mm", "36+ mm", "18/20 (US)", "20/22 (US)", "23/25 (US)", "25/27 (US)", "27/30 (US)", "30/32 (US)", "32/34 (US)", "34/36 (US)", "36/40 (US)", "40+ (US)", "Extra Large", "Large", "Medium", "Small"],
+        "Packaging": ["Std Netted Bigbag (250-1000kg)", "Vacuum Bigbag (250-1000kg)", "Vac Bags in Carton (1-25kg)", "Alu Box (1-25kg)", "Nylon Sack (25-90kg)", "Gunny Sack (50-90kg)", "Tanker Truck", "Metal Drum (200L)", "Plastic Drum (60L)", "Plastic Bucket (1-25L)", "Metal Tin (5L)", "Retail Bag (Pillow)", "Retail Bag (Doybag)", "Retail Bag (Quadro)", "Glass Jar", "Small Bucket"],
+        "Currencies": ["SEK", "TL", "USD", "EUR", "NOK"],
+        "Incoterms": ["EXW", "FCA", "CPT", "CIP", "DAP", "DPU", "DDP", "FAS", "FOB", "CFR", "CIF"]
+    }
+
     writer = pd.ExcelWriter(output, engine='xlsxwriter')
     workbook = writer.book
     worksheet = workbook.add_worksheet('Offer Sheet')
@@ -120,7 +121,8 @@ def generate_offer_excel():
     
     worksheet.set_column('B:B', 20); worksheet.set_column('C:C', 20); worksheet.set_column('D:D', 25); worksheet.set_column('E:E', 20); worksheet.set_column('G:G', 25); worksheet.set_column('L:L', 20); worksheet.set_column('M:M', 25); worksheet.set_column('N:N', 20); worksheet.set_column('O:O', 20)
 
-    worksheet_qual = workbook.add_worksheet('Quality Parameters'); worksheet_qual.set_tab_color('#FFC000')
+    worksheet_qual = workbook.add_worksheet('Quality Parameters')
+    worksheet_qual.set_tab_color('#FFC000')
     qual_ident_cols = ["Product Group (Linked)", "Type (Linked)", "Variety (Linked)", "Size (Linked)"]
     qual_param_cols = ["Target Humidity %", "Maximum FFA %", "Maximum Peroxide", "Maximum Oversize %", "Maximum Undersize %", "Maximum Visible Rotten %", "Maximum Hidden Rotten %", "Maximum Visible Mouldy %", "Maximum Hidden Mouldy %", "Maximum Visible Tumorous %", "Maximum Hidden Tumorous %", "Maximum Insect Damaged %", "Maximum Twin Kernels %", "Maximum Mech. Damaged %", "Maximum Broken %", "Maximum Rancid %", "Maximum Shrivelled %", "Maximum Other Types %", "Maximum Shell Pieces", "Maximum Foreign Matter"]
     default_qual_values = ["", 1, 1, 5, 5, 2, 2.5, 0.5, 0.5, 5, 5, 0, 2, 8, 4, 1, 2.5, 10, "0.01%", 0]; all_qual_cols = qual_ident_cols + qual_param_cols
@@ -128,22 +130,12 @@ def generate_offer_excel():
     for r in range(table_start_row + 1, 100):
         xl_row = r + 1; worksheet_qual.write_formula(r, 0, f"='Offer Sheet'!B{xl_row}", linked_cell_format); worksheet_qual.write_formula(r, 1, f"='Offer Sheet'!D{xl_row}", linked_cell_format); worksheet_qual.write_formula(r, 2, f"='Offer Sheet'!E{xl_row}", linked_cell_format); worksheet_qual.write_formula(r, 3, f"='Offer Sheet'!F{xl_row}", linked_cell_format)
         for i, val in enumerate(default_qual_values): worksheet_qual.write(r, 4 + i, val, input_format)
-    
+
     ref_sheet = workbook.add_worksheet('ReferenceData'); ref_sheet.hide()
     def write_list_to_ref(header, data_list, col_idx):
         ref_sheet.write(0, col_idx, header); [ref_sheet.write(i + 1, col_idx, item) for i, item in enumerate(data_list)]; return f"=ReferenceData!${xlsxwriter.utility.xl_col_to_name(col_idx)}$2:${xlsxwriter.utility.xl_col_to_name(col_idx)}${len(data_list) + 1}"
-    
-    cat_range = write_list_to_ref("Categories", data["Categories"], 0); group_range = write_list_to_ref("Product_Groups", data["Product_Groups"], 1); type_range = write_list_to_ref("Product_Types", data["Product_Types"], 2); var_range = write_list_to_ref("Varieties", data["Varieties"], 3); size_range = write_list_to_ref("Sizes", data["Sizes"], 4); pack_range = write_list_to_ref("Packaging", data["Packaging"], 5); curr_range = write_list_to_ref("Currencies", data["Currencies"], 6); inco_range = write_list_to_ref("Incoterms", data["Incoterms"], 7)
-    
-    worksheet.data_validation(table_start_row + 1, 0, 100, 0, {'validate': 'list', 'source': cat_range})
-    worksheet.data_validation(table_start_row + 1, 1, 100, 1, {'validate': 'list', 'source': group_range})
-    worksheet.data_validation(table_start_row + 1, 3, 100, 3, {'validate': 'list', 'source': type_range})
-    worksheet.data_validation(table_start_row + 1, 4, 100, 4, {'validate': 'list', 'source': var_range})
-    worksheet.data_validation(table_start_row + 1, 5, 100, 5, {'validate': 'list', 'source': size_range})
-    worksheet.data_validation(table_start_row + 1, 6, 100, 6, {'validate': 'list', 'source': pack_range})
-    worksheet.data_validation(table_start_row + 1, 9, 100, 9, {'validate': 'list', 'source': curr_range})
-    worksheet.data_validation(table_start_row + 1, 10, 100, 10, {'validate': 'list', 'source': inco_range})
-
+    cat_range = write_list_to_ref("Categories", data["Categories"], 0); group_range = write_list_to_ref("Groups", data["Product_Groups"], 1); type_range = write_list_to_ref("Types", data["Product_Types"], 2); var_range = write_list_to_ref("Varieties", data["Varieties"], 3); size_range = write_list_to_ref("Sizes", data["Sizes"], 4); pack_range = write_list_to_ref("Packaging", data["Packaging"], 5); curr_range = write_list_to_ref("Currencies", data["Currencies"], 6); inco_range = write_list_to_ref("Incoterms", data["Incoterms"], 7)
+    worksheet.data_validation(table_start_row + 1, 0, 100, 0, {'validate': 'list', 'source': cat_range}); worksheet.data_validation(table_start_row + 1, 1, 100, 1, {'validate': 'list', 'source': group_range}); worksheet.data_validation(table_start_row + 1, 3, 100, 3, {'validate': 'list', 'source': type_range}); worksheet.data_validation(table_start_row + 1, 4, 100, 4, {'validate': 'list', 'source': var_range}); worksheet.data_validation(table_start_row + 1, 5, 100, 5, {'validate': 'list', 'source': size_range}); worksheet.data_validation(table_start_row + 1, 6, 100, 6, {'validate': 'list', 'source': pack_range}); worksheet.data_validation(table_start_row + 1, 9, 100, 9, {'validate': 'list', 'source': curr_range}); worksheet.data_validation(table_start_row + 1, 10, 100, 10, {'validate': 'list', 'source': inco_range})
     writer.close(); output.seek(0); return output
 
 # ==========================================
@@ -158,9 +150,7 @@ if not st.session_state.user:
         if st.button("Giriş Yap", type="primary"):
             user, msg = login_user(email, password)
             if user:
-                # LOG LOGIN
-                log_login(user['email'])
-                
+                log_login(user['email']) # LOG LOGIN
                 st.session_state.user = user; st.session_state.role = user['role']
                 st.success(f"Hoşgeldiniz, {user['email']} ({user['role']})"); time.sleep(0.5); st.rerun()
             else: st.error(msg)
@@ -267,6 +257,7 @@ else:
         if role == 'administrator' and len(tabs) > 1:
             with tabs[1]:
                 st.header("📝 Input Daily Market Prices")
+                
                 live_rates = get_live_rates()
                 default_usd = live_rates.get("USD", 0.0)
                 default_eur = live_rates.get("EUR", 0.0)
@@ -315,7 +306,9 @@ else:
                         use_container_width=True, hide_index=True
                     )
 
-    # MODÜL 1-6
+    # ==========================
+    # FACTORY MODULES 1-6
+    # ==========================
     elif module == MODULE_MAP[1]:
         st.title("Modül 1: Şube Ürün Girişi"); hazelnut_cat = "Kabuklu Fındık"; st.info("Bu modül Şubelerden yapılan **Kabuklu Fındık** alımları içindir."); 
         with st.form("sube_hazelnut_form"):
@@ -364,7 +357,7 @@ else:
                 st.markdown("---"); st.subheader("3. Ödeme ve Kayıt"); f1, f2, f3 = st.columns(3); doc_num = f1.text_input("Makbuz / Fatura No"); pay_amount = f2.number_input("Ödenen Tutar", 0.0); pay_method = f3.selectbox("Ödeme Yöntemi", ["Nakit", "Banka", "Çek"]); 
                 if reg_type != "Emanet": st.metric("Kalan Bakiye", f"{total_val - pay_amount:,.2f} TL")
                 if st.form_submit_button("✅ Fabrika Girişini Kaydet"):
-                    payload = {"created_by": st.session_state.user['email'], "status": "Pending Arrival", "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type, "id_number": id_num, "city": city, "district": dist_in, "village": vill_in, "phone_number": contact, "cert_status": cert_status, "reg_type": reg_type, "location": location, "item_type": hazelnut_type, "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num, "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount, "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag, "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv, "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over, "moisture": val_moist, "calculated_randiman": val_randiman, "gross_price_50": price_gross, "actual_unit_price": price_net_deducted}; insert_record("purchases", payload); st.success("Fabrika Girişi Kaydedildi!")
+                    payload = {"created_by": st.session_state.user['email'], "status": "Pending Arrival", "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type, "id_number": id_num, "city": city, "district": dist_in, "village": vill_in, "phone_number": contact, "cert_status": cert_status, "reg_type": reg_type, "location": location, "item_type": hazelnut_type, "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num, "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount, "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag, "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv, "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over, "moisture": val_moist, "calculated_randiman": val_randiman, "gross_price_50": price_gross, "net_price_50": net_price_50, "actual_unit_price": unit_price}; insert_record("purchases", payload); st.success("Fabrika Girişi Kaydedildi!")
         with tab_malzeme:
             st.subheader("Malzeme Seçimi"); material_cats = ["Ambalaj Malzemeleri", "Bakım Malzemeleri", "Ofis Malzemeleri", "Temizlik Malzemeleri", "Eşantiyon & Hediye", "İş Kıyafetleri", "Gıda ve Mutfak", "Diğer"]; c_cat, c_item = st.columns(2); selected_mat_cat = c_cat.selectbox("Kategori", material_cats, key="mat_cat_fab"); 
             try: response = supabase.table("material_definitions").select("*").eq("category", selected_mat_cat).execute(); items_data = response.data; item_names = [row['item_name'] for row in items_data]
