@@ -13,6 +13,7 @@ st.set_page_config(page_title="Fındık Fabrikası Yönetimi", layout="wide")
 # --- SESSION STATE SETUP ---
 if 'user' not in st.session_state: st.session_state.user = None
 if 'role' not in st.session_state: st.session_state.role = None
+if 'offer_step' not in st.session_state: st.session_state.offer_step = "menu" # controls offer UI state
 
 # --- CONSTANTS ---
 MODULE_MAP = {
@@ -35,6 +36,18 @@ CALIBRE_OPTIONS = [
     "21μ", "22μ", "23μ", "24μ", "25μ", "26μ", "27μ", "28μ", "29μ", 
     "30μ", "31μ", "32μ", "33μ", "34μ", "35μ"
 ]
+
+# --- OFFER MASTER DATA (Global Scope for UI & Excel) ---
+OFFER_CONSTANTS = {
+    "Categories": ["Nuts", "Dried Fruit", "Oil", "Chocolate"],
+    "Product_Groups": ["Hazelnuts", "Walnuts", "Pistachios", "Almonds", "Peanuts", "Cashew Nuts", "Brazil Nuts", "Pine Nuts", "Macadamia Nuts", "Pecan Nuts", "Apricots", "Raisins", "Figs", "Plums", "Hazelnut Oil", "Olive Oil", "Hazelnut Cream", "Hazelnut Crunch", "Pistachio Cream", "Pistachio Crunch"],
+    "Product_Types": ["Inshell", "Inshell - Harmanici", "Natural Kernels - Whole", "Natural Kernels - Shrivelled", "Natural Kernels - Scratched", "Natural Kernels - Broken", "Natural Kernels - Rotten", "Natural Kernels - Mix Reject", "Natural and Slivered", "Blanched Kernels - Whole", "Blanched and Chopped Pieces", "Blanched and Slivered", "Blanched and Diced", "Blanched and Scratched", "Blanched and Broken", "Blanched Flour", "Roasted Kernels - Whole", "Roasted and Chopped Pieces", "Roasted and Slivered", "Roasted and Diced", "Roasted and Scratched", "Roasted and Broken", "Roasted Flour", "Light Paste", "Dark Paste", "Medium Paste", "Shells"],
+    "Varieties": ["Karışık", "Giresun Tombul", "Çakıldak", "Kara", "Sivri", "Palaz", "Badem", "Foşa", "Yomra", "Nonpareil", "Carmel", "Butte", "Padre", "Sonora", "Monterey", "Marcona", "Guara", "Kirmizi", "Uzun", "Halebi", "Siirt", "Ohadi", "Fandoghi", "Kalleh Ghouchi", "Ahmad Aghaei", "Akbari", "Kerman", "Golden Hills", "Lost Hills", "Kalehghouchi", "Gumdrop", "Chandler", "Hartley", "Howard", "Franquette", "Serr", "Tulare", "Pedro", "Şebin", "Bilecik", "Yalova", "Kaman", "Kaplan", "Şen", "Tokat"],
+    "Sizes": ["Mixed Size", "21mm+", "20mm+", "19mm+", "18mm+", "17mm+", "16mm+", "14-16mm", "13-15mm", "15-16mm", "14-15mm", "13-14mm", "12-14mm", "12-13mm", "11-13mm", "11-12mm", "10-12mm", "10-11mm", "9-11mm", "9-10mm", "9mm-", "9mm+", "0-2mm", "1-3mm", "2-4mm", "4-6mm", "5-7mm", "6-8mm", "7-11mm", "3-11mm", "5-11mm", "15μ", "18μ", "20μ", "21μ", "22μ", "23μ", "24μ", "25μ", "26μ", "27μ", "28μ", "29μ", "30μ", "31μ", "32μ", "33μ", "34μ", "35μ", "18/20 mm", "20/22 mm", "22/24 mm", "24/26 mm", "26/28 mm", "28/30 mm", "30/32 mm", "32/34 mm", "34/36 mm", "36+ mm", "18/20 (US)", "20/22 (US)", "23/25 (US)", "25/27 (US)", "27/30 (US)", "30/32 (US)", "32/34 (US)", "34/36 (US)", "36/40 (US)", "40+ (US)", "Extra Large", "Large", "Medium", "Small"],
+    "Packaging": ["Std Netted Bigbag (250-1000kg)", "Vacuum Bigbag (250-1000kg)", "Vac Bags in Carton (1-25kg)", "Alu Box (1-25kg)", "Nylon Sack (25-90kg)", "Gunny Sack (50-90kg)", "Tanker Truck", "Metal Drum (200L)", "Plastic Drum (60L)", "Plastic Bucket (1-25L)", "Metal Tin (5L)", "Retail Bag (Pillow)", "Retail Bag (Doybag)", "Retail Bag (Quadro)", "Glass Jar", "Small Bucket"],
+    "Currencies": ["SEK", "TL", "USD", "EUR", "NOK"],
+    "Incoterms": ["EXW", "FCA", "CPT", "CIP", "DAP", "DPU", "DDP", "FAS", "FOB", "CFR", "CIF"]
+}
 
 # --- HELPER FUNCTIONS ---
 def calculate_randiman(sample_w, good, shriv):
@@ -82,26 +95,19 @@ def log_login(email):
     except Exception as e:
         print(f"Login log error: {e}")
 
-def generate_offer_excel():
-    """Generates the Offer Excel file in memory."""
+def generate_offer_excel(header_data=None, product_df=None):
+    """
+    Generates the Offer Excel file.
+    If header_data and product_df are provided, populates the values.
+    """
     output = io.BytesIO()
     
-    data = {
-        "Categories": ["Nuts", "Dried Fruit", "Oil", "Chocolate"],
-        "Product_Groups": ["Hazelnuts", "Walnuts", "Pistachios", "Almonds", "Peanuts", "Cashew Nuts", "Brazil Nuts", "Pine Nuts", "Macadamia Nuts", "Pecan Nuts", "Apricots", "Raisins", "Figs", "Plums", "Hazelnut Oil", "Olive Oil", "Hazelnut Cream", "Hazelnut Crunch", "Pistachio Cream", "Pistachio Crunch"],
-        "Product_Types": ["Inshell", "Inshell - Harmanici", "Natural Kernels - Whole", "Natural Kernels - Shrivelled", "Natural Kernels - Scratched", "Natural Kernels - Broken", "Natural Kernels - Rotten", "Natural Kernels - Mix Reject", "Natural and Slivered", "Blanched Kernels - Whole", "Blanched and Chopped Pieces", "Blanched and Slivered", "Blanched and Diced", "Blanched and Scratched", "Blanched and Broken", "Blanched Flour", "Roasted Kernels - Whole", "Roasted and Chopped Pieces", "Roasted and Slivered", "Roasted and Diced", "Roasted and Scratched", "Roasted and Broken", "Roasted Flour", "Light Paste", "Dark Paste", "Medium Paste", "Shells"],
-        "Varieties": ["Karışık", "Giresun Tombul", "Çakıldak", "Kara", "Sivri", "Palaz", "Badem", "Foşa", "Yomra", "Nonpareil", "Carmel", "Butte", "Padre", "Sonora", "Monterey", "Marcona", "Guara", "Kirmizi", "Uzun", "Halebi", "Siirt", "Ohadi", "Fandoghi", "Kalleh Ghouchi", "Ahmad Aghaei", "Akbari", "Kerman", "Golden Hills", "Lost Hills", "Kalehghouchi", "Gumdrop", "Chandler", "Hartley", "Howard", "Franquette", "Serr", "Tulare", "Pedro", "Şebin", "Bilecik", "Yalova", "Kaman", "Kaplan", "Şen", "Tokat"],
-        "Sizes": ["Mixed Size", "21mm+", "20mm+", "19mm+", "18mm+", "17mm+", "16mm+", "14-16mm", "13-15mm", "15-16mm", "14-15mm", "13-14mm", "12-14mm", "12-13mm", "11-13mm", "11-12mm", "10-12mm", "10-11mm", "9-11mm", "9-10mm", "9mm-", "9mm+", "0-2mm", "1-3mm", "2-4mm", "4-6mm", "5-7mm", "6-8mm", "7-11mm", "3-11mm", "5-11mm", "15μ", "18μ", "20μ", "21μ", "22μ", "23μ", "24μ", "25μ", "26μ", "27μ", "28μ", "29μ", "30μ", "31μ", "32μ", "33μ", "34μ", "35μ", "18/20 mm", "20/22 mm", "22/24 mm", "24/26 mm", "26/28 mm", "28/30 mm", "30/32 mm", "32/34 mm", "34/36 mm", "36+ mm", "18/20 (US)", "20/22 (US)", "23/25 (US)", "25/27 (US)", "27/30 (US)", "30/32 (US)", "32/34 (US)", "34/36 (US)", "36/40 (US)", "40+ (US)", "Extra Large", "Large", "Medium", "Small"],
-        "Packaging": ["Std Netted Bigbag (250-1000kg)", "Vacuum Bigbag (250-1000kg)", "Vac Bags in Carton (1-25kg)", "Alu Box (1-25kg)", "Nylon Sack (25-90kg)", "Gunny Sack (50-90kg)", "Tanker Truck", "Metal Drum (200L)", "Plastic Drum (60L)", "Plastic Bucket (1-25L)", "Metal Tin (5L)", "Retail Bag (Pillow)", "Retail Bag (Doybag)", "Retail Bag (Quadro)", "Glass Jar", "Small Bucket"],
-        "Currencies": ["SEK", "TL", "USD", "EUR", "NOK"],
-        "Incoterms": ["EXW", "FCA", "CPT", "CIP", "DAP", "DPU", "DDP", "FAS", "FOB", "CFR", "CIF"]
-    }
-
     writer = pd.ExcelWriter(output, engine='xlsxwriter')
     workbook = writer.book
     worksheet = workbook.add_worksheet('Offer Sheet')
     worksheet.set_tab_color('#107C41')
 
+    # Formats
     header_format = workbook.add_format({'bold': True, 'font_size': 14, 'color': '#203764'})
     label_format = workbook.add_format({'bold': True, 'align': 'right', 'bg_color': '#f2f2f2', 'border': 1})
     input_format = workbook.add_format({'border': 1, 'bg_color': '#ffffff'})
@@ -109,34 +115,107 @@ def generate_offer_excel():
     linked_cell_format = workbook.add_format({'bg_color': '#E7E6E6', 'border': 1, 'italic': True, 'font_color': '#595959'})
     quality_header_format = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'bg_color': '#FFC000', 'font_color': 'black', 'border': 1, 'text_wrap': True})
 
+    # --- Header Section ---
     worksheet.write('A1', 'AVELLA OFFER SHEET', header_format)
-    headers = [("Date:", "B3"), ("Offer No:", "D3"), ("Validity:", "F3"), ("Customer Name:", "B4"), ("Cust. Ref:", "D4"), ("Avella Ref:", "F4"), ("Payment Terms:", "B5"), ("Delivery Addr:", "D5")]
-    for label, cell in headers:
-        worksheet.write(cell, label, label_format); col_letter = cell[0]; row_num = int(cell[1:]); input_cell = chr(ord(col_letter) + 1) + str(row_num); worksheet.write(input_cell, "", input_format)
-    worksheet.merge_range('E5:G5', "", input_format)
+    
+    # Header Mapping: Label -> Cell, Value from dict
+    headers = [
+        ("Date:", "B3", header_data.get("date", "") if header_data else ""),
+        ("Offer No:", "D3", header_data.get("offer_no", "") if header_data else ""),
+        ("Validity:", "F3", header_data.get("validity", "") if header_data else ""),
+        ("Customer Name:", "B4", header_data.get("customer", "") if header_data else ""),
+        ("Cust. Ref:", "D4", header_data.get("cust_ref", "") if header_data else ""),
+        ("Avella Ref:", "F4", header_data.get("avella_ref", "") if header_data else ""),
+        ("Payment Terms:", "B5", header_data.get("payment", "") if header_data else ""),
+        ("Delivery Addr:", "D5", header_data.get("delivery", "") if header_data else "")
+    ]
 
+    for label, cell, val in headers:
+        worksheet.write(cell, label, label_format)
+        col_letter = cell[0]
+        row_num = int(cell[1:])
+        input_cell = chr(ord(col_letter) + 1) + str(row_num)
+        worksheet.write(input_cell, str(val), input_format) # Write Value here
+    
+    worksheet.merge_range('E5:G5', "", input_format) # Merge for Delivery Address overflow if needed
+
+    # --- Product Table ---
     table_start_row = 8
     columns = ["Category", "Product Group", "Total Contract Volume (kg)", "Type/Process", "Variety", "Size", "Packaging", "Net Wgt (kg)", "Price", "Currency", "Incoterms", "Place of Delivery", "Minimum Order Quantity (kg)", "Shipment Schedule", "Payment Terms"]
-    for i, col_name in enumerate(columns): worksheet.write(table_start_row, i, col_name, table_header_format); worksheet.set_column(i, i, 15)
     
-    worksheet.set_column('B:B', 20); worksheet.set_column('C:C', 20); worksheet.set_column('D:D', 25); worksheet.set_column('E:E', 20); worksheet.set_column('G:G', 25); worksheet.set_column('L:L', 20); worksheet.set_column('M:M', 25); worksheet.set_column('N:N', 20); worksheet.set_column('O:O', 20)
+    for i, col_name in enumerate(columns):
+        worksheet.write(table_start_row, i, col_name, table_header_format)
+        worksheet.set_column(i, i, 15)
+    
+    # Adjust widths
+    worksheet.set_column('B:B', 20); worksheet.set_column('C:C', 20); worksheet.set_column('D:D', 25)
+    worksheet.set_column('E:E', 20); worksheet.set_column('G:G', 25); worksheet.set_column('L:L', 20)
+    worksheet.set_column('M:M', 25); worksheet.set_column('N:N', 20); worksheet.set_column('O:O', 20)
 
+    # --- Populate Product Data if available ---
+    data_rows_count = 100 # Default valid rows
+    if product_df is not None and not product_df.empty:
+        # Map dataframe columns to Excel columns order
+        # Note: product_df cols must match the columns list order or we map manually
+        for idx, row in product_df.iterrows():
+            row_num = table_start_row + 1 + idx
+            for col_idx, col_name in enumerate(columns):
+                val = row.get(col_name, "")
+                worksheet.write(row_num, col_idx, val, input_format)
+        data_rows_count = max(100, len(product_df) + 10) # Ensure validation covers all data
+
+    # --- Quality Parameters Sheet ---
     worksheet_qual = workbook.add_worksheet('Quality Parameters')
     worksheet_qual.set_tab_color('#FFC000')
     qual_ident_cols = ["Product Group (Linked)", "Type (Linked)", "Variety (Linked)", "Size (Linked)"]
     qual_param_cols = ["Target Humidity %", "Maximum FFA %", "Maximum Peroxide", "Maximum Oversize %", "Maximum Undersize %", "Maximum Visible Rotten %", "Maximum Hidden Rotten %", "Maximum Visible Mouldy %", "Maximum Hidden Mouldy %", "Maximum Visible Tumorous %", "Maximum Hidden Tumorous %", "Maximum Insect Damaged %", "Maximum Twin Kernels %", "Maximum Mech. Damaged %", "Maximum Broken %", "Maximum Rancid %", "Maximum Shrivelled %", "Maximum Other Types %", "Maximum Shell Pieces", "Maximum Foreign Matter"]
-    default_qual_values = ["", 1, 1, 5, 5, 2, 2.5, 0.5, 0.5, 5, 5, 0, 2, 8, 4, 1, 2.5, 10, "0.01%", 0]; all_qual_cols = qual_ident_cols + qual_param_cols
-    for i, col_name in enumerate(all_qual_cols): worksheet_qual.write(table_start_row, i, col_name, quality_header_format); worksheet_qual.set_column(i, i, 22) 
-    for r in range(table_start_row + 1, 100):
-        xl_row = r + 1; worksheet_qual.write_formula(r, 0, f"='Offer Sheet'!B{xl_row}", linked_cell_format); worksheet_qual.write_formula(r, 1, f"='Offer Sheet'!D{xl_row}", linked_cell_format); worksheet_qual.write_formula(r, 2, f"='Offer Sheet'!E{xl_row}", linked_cell_format); worksheet_qual.write_formula(r, 3, f"='Offer Sheet'!F{xl_row}", linked_cell_format)
-        for i, val in enumerate(default_qual_values): worksheet_qual.write(r, 4 + i, val, input_format)
+    default_qual_values = ["", 1, 1, 5, 5, 2, 2.5, 0.5, 0.5, 5, 5, 0, 2, 8, 4, 1, 2.5, 10, "0.01%", 0]
+    all_qual_cols = qual_ident_cols + qual_param_cols
 
+    for i, col_name in enumerate(all_qual_cols):
+        worksheet_qual.write(table_start_row, i, col_name, quality_header_format)
+        worksheet_qual.set_column(i, i, 22) 
+
+    # Write Formulas
+    for r in range(table_start_row + 1, table_start_row + 1 + data_rows_count):
+        xl_row = r + 1
+        worksheet_qual.write_formula(r, 0, f"='Offer Sheet'!B{xl_row}", linked_cell_format) 
+        worksheet_qual.write_formula(r, 1, f"='Offer Sheet'!D{xl_row}", linked_cell_format) 
+        worksheet_qual.write_formula(r, 2, f"='Offer Sheet'!E{xl_row}", linked_cell_format) 
+        worksheet_qual.write_formula(r, 3, f"='Offer Sheet'!F{xl_row}", linked_cell_format) 
+        for i, val in enumerate(default_qual_values):
+            worksheet_qual.write(r, 4 + i, val, input_format)
+
+    # --- Reference Data & Validation ---
     ref_sheet = workbook.add_worksheet('ReferenceData'); ref_sheet.hide()
     def write_list_to_ref(header, data_list, col_idx):
-        ref_sheet.write(0, col_idx, header); [ref_sheet.write(i + 1, col_idx, item) for i, item in enumerate(data_list)]; return f"=ReferenceData!${xlsxwriter.utility.xl_col_to_name(col_idx)}$2:${xlsxwriter.utility.xl_col_to_name(col_idx)}${len(data_list) + 1}"
-    cat_range = write_list_to_ref("Categories", data["Categories"], 0); group_range = write_list_to_ref("Groups", data["Product_Groups"], 1); type_range = write_list_to_ref("Types", data["Product_Types"], 2); var_range = write_list_to_ref("Varieties", data["Varieties"], 3); size_range = write_list_to_ref("Sizes", data["Sizes"], 4); pack_range = write_list_to_ref("Packaging", data["Packaging"], 5); curr_range = write_list_to_ref("Currencies", data["Currencies"], 6); inco_range = write_list_to_ref("Incoterms", data["Incoterms"], 7)
-    worksheet.data_validation(table_start_row + 1, 0, 100, 0, {'validate': 'list', 'source': cat_range}); worksheet.data_validation(table_start_row + 1, 1, 100, 1, {'validate': 'list', 'source': group_range}); worksheet.data_validation(table_start_row + 1, 3, 100, 3, {'validate': 'list', 'source': type_range}); worksheet.data_validation(table_start_row + 1, 4, 100, 4, {'validate': 'list', 'source': var_range}); worksheet.data_validation(table_start_row + 1, 5, 100, 5, {'validate': 'list', 'source': size_range}); worksheet.data_validation(table_start_row + 1, 6, 100, 6, {'validate': 'list', 'source': pack_range}); worksheet.data_validation(table_start_row + 1, 9, 100, 9, {'validate': 'list', 'source': curr_range}); worksheet.data_validation(table_start_row + 1, 10, 100, 10, {'validate': 'list', 'source': inco_range})
-    writer.close(); output.seek(0); return output
+        ref_sheet.write(0, col_idx, header)
+        for i, item in enumerate(data_list): ref_sheet.write(i + 1, col_idx, item)
+        return f"=ReferenceData!${xlsxwriter.utility.xl_col_to_name(col_idx)}$2:${xlsxwriter.utility.xl_col_to_name(col_idx)}${len(data_list) + 1}"
+
+    cat_range = write_list_to_ref("Categories", OFFER_CONSTANTS["Categories"], 0)
+    group_range = write_list_to_ref("Groups", OFFER_CONSTANTS["Product_Groups"], 1)
+    type_range = write_list_to_ref("Types", OFFER_CONSTANTS["Product_Types"], 2)
+    var_range = write_list_to_ref("Varieties", OFFER_CONSTANTS["Varieties"], 3)
+    size_range = write_list_to_ref("Sizes", OFFER_CONSTANTS["Sizes"], 4)
+    pack_range = write_list_to_ref("Packaging", OFFER_CONSTANTS["Packaging"], 5)
+    curr_range = write_list_to_ref("Currencies", OFFER_CONSTANTS["Currencies"], 6)
+    inco_range = write_list_to_ref("Incoterms", OFFER_CONSTANTS["Incoterms"], 7)
+
+    # Apply validation to the whole range
+    val_range_end = table_start_row + 1 + data_rows_count
+    worksheet.data_validation(table_start_row + 1, 0, val_range_end, 0, {'validate': 'list', 'source': cat_range})
+    worksheet.data_validation(table_start_row + 1, 1, val_range_end, 1, {'validate': 'list', 'source': group_range})
+    worksheet.data_validation(table_start_row + 1, 3, val_range_end, 3, {'validate': 'list', 'source': type_range})
+    worksheet.data_validation(table_start_row + 1, 4, val_range_end, 4, {'validate': 'list', 'source': var_range})
+    worksheet.data_validation(table_start_row + 1, 5, val_range_end, 5, {'validate': 'list', 'source': size_range})
+    worksheet.data_validation(table_start_row + 1, 6, val_range_end, 6, {'validate': 'list', 'source': pack_range})
+    worksheet.data_validation(table_start_row + 1, 9, val_range_end, 9, {'validate': 'list', 'source': curr_range})
+    worksheet.data_validation(table_start_row + 1, 10, val_range_end, 10, {'validate': 'list', 'source': inco_range})
+
+    writer.close()
+    output.seek(0)
+    return output
 
 # ==========================================
 # 🔐 AUTHENTICATION PAGE
@@ -201,12 +280,9 @@ else:
         if role == 'administrator': portal_tabs.append("Avella Market Price Input (Admin)")
         tabs = st.tabs(portal_tabs)
         
-        # --- TAB 1: CHARTS ---
         with tabs[0]:
             st.header("🌰 Market Updates & Inshell Prices")
             df_prices = get_market_prices()
-            
-            # Live Rates Header
             live_rates = get_live_rates()
             rate_usd_live = live_rates.get("USD", 34.0)
             rate_eur_live = live_rates.get("EUR", 37.0)
@@ -219,96 +295,43 @@ else:
                 max_db_date = df_prices['date'].max()
                 start_window = max_db_date - timedelta(days=365)
                 colors = {"Tombul": "firebrick", "Cakildak": "royalblue", "Levant": "green"}
-                
                 st.markdown("---")
-                
                 def build_chart(title, mode_type, y_label):
                     fig = go.Figure()
                     for h_type in ["Tombul", "Cakildak", "Levant"]:
                         col_name = f"price_{h_type.lower()}"
                         if col_name in df_prices.columns:
-                            if mode_type == 'TL':
-                                y_vals = df_prices[col_name]
-                            elif mode_type == 'USD':
-                                y_vals = df_prices[col_name] / df_prices['rate_usd_try']
-                            elif mode_type == 'EUR':
-                                y_vals = df_prices[col_name] / df_prices['rate_eur_try']
-                            
-                            fig.add_trace(go.Scatter(
-                                x=df_prices['date'], y=y_vals, name=h_type,
-                                line=dict(color=colors[h_type], width=3),
-                                mode='lines', fill=None
-                            ))
-                    fig.update_layout(
-                        title=title,
-                        xaxis=dict(title="Date", rangeslider=dict(visible=True), type="date", range=[start_window, max_db_date]),
-                        yaxis=dict(title=dict(text=y_label, font=dict(color="black"))),
-                        hovermode="x unified", height=500
-                    )
+                            if mode_type == 'TL': y_vals = df_prices[col_name]
+                            elif mode_type == 'USD': y_vals = df_prices[col_name] / df_prices['rate_usd_try']
+                            elif mode_type == 'EUR': y_vals = df_prices[col_name] / df_prices['rate_eur_try']
+                            fig.add_trace(go.Scatter(x=df_prices['date'], y=y_vals, name=h_type, line=dict(color=colors[h_type], width=3), mode='lines', fill=None))
+                    fig.update_layout(title=title, xaxis=dict(title="Date", rangeslider=dict(visible=True), type="date", range=[start_window, max_db_date]), yaxis=dict(title=dict(text=y_label, font=dict(color="black"))), hovermode="x unified", height=500)
                     return fig
-
                 st.plotly_chart(build_chart("1. Inshell Prices (TL/kg)", 'TL', "Price (TL)"), use_container_width=True)
                 st.plotly_chart(build_chart("2. Inshell Prices (USD/kg)", 'USD', "Price (USD)"), use_container_width=True)
                 st.plotly_chart(build_chart("3. Inshell Prices (EUR/kg)", 'EUR', "Price (EUR)"), use_container_width=True)
-            else:
-                st.info("No market price data available yet.")
+            else: st.info("No market price data available yet.")
 
-        # --- TAB 2: ADMIN INPUT ---
         if role == 'administrator' and len(tabs) > 1:
             with tabs[1]:
                 st.header("📝 Input Daily Market Prices")
-                
-                live_rates = get_live_rates()
-                default_usd = live_rates.get("USD", 0.0)
-                default_eur = live_rates.get("EUR", 0.0)
-
+                live_rates = get_live_rates(); default_usd = live_rates.get("USD", 0.0); default_eur = live_rates.get("EUR", 0.0)
                 with st.form("price_input_form"):
-                    d_date = st.date_input("Date", value=datetime.now())
-                    st.caption("Enter prices for ALL 3 types (TL/kg).")
-                    c1, c2, c3 = st.columns(3)
-                    p_tombul = c1.number_input("Tombul", min_value=0.0, step=0.5)
-                    p_cakildak = c2.number_input("Cakildak", min_value=0.0, step=0.5)
-                    p_levant = c3.number_input("Levant", min_value=0.0, step=0.5)
-                    st.markdown("---")
-                    st.write("**Exchange Rates (Auto-fetched)**")
-                    c4, c5 = st.columns(2)
-                    r_usd = c4.number_input("USD/TRY Rate", min_value=0.0, step=0.01, format="%.4f", value=default_usd)
-                    r_eur = c5.number_input("EUR/TRY Rate", min_value=0.0, step=0.01, format="%.4f", value=default_eur)
-                    
+                    d_date = st.date_input("Date", value=datetime.now()); st.caption("Enter prices for ALL 3 types (TL/kg)."); c1, c2, c3 = st.columns(3); p_tombul = c1.number_input("Tombul", min_value=0.0, step=0.5); p_cakildak = c2.number_input("Cakildak", min_value=0.0, step=0.5); p_levant = c3.number_input("Levant", min_value=0.0, step=0.5)
+                    st.markdown("---"); st.write("**Exchange Rates (Auto-fetched)**"); c4, c5 = st.columns(2); r_usd = c4.number_input("USD/TRY Rate", min_value=0.0, step=0.01, format="%.4f", value=default_usd); r_eur = c5.number_input("EUR/TRY Rate", min_value=0.0, step=0.01, format="%.4f", value=default_eur)
                     if st.form_submit_button("Save Entry"):
                         if p_tombul > 0 and p_cakildak > 0 and p_levant > 0:
-                            payload = {
-                                "date": str(d_date),
-                                "price_tombul": p_tombul,
-                                "price_cakildak": p_cakildak,
-                                "price_levant": p_levant,
-                                "rate_usd_try": r_usd,
-                                "rate_eur_try": r_eur,
-                                "created_by": st.session_state.user['email']
-                            }
-                            try:
-                                supabase.table("market_prices").upsert(payload, on_conflict="date").execute()
-                                st.success("Entry Saved Successfully!")
-                                time.sleep(1); st.rerun()
+                            payload = {"date": str(d_date), "price_tombul": p_tombul, "price_cakildak": p_cakildak, "price_levant": p_levant, "rate_usd_try": r_usd, "rate_eur_try": r_eur, "created_by": st.session_state.user['email']}
+                            try: supabase.table("market_prices").upsert(payload, on_conflict="date").execute(); st.success("Entry Saved Successfully!"); time.sleep(1); st.rerun()
                             except Exception as e: st.error(f"Error: {e}")
                         else: st.warning("Please fill all price fields.")
-                
                 st.markdown("### 📜 Historical Data Input")
                 df_hist = get_market_prices()
                 if not df_hist.empty:
-                    disp_cols = ["id", "date", "price_tombul", "price_cakildak", "price_levant", "rate_usd_try", "rate_eur_try", "created_by"]
-                    valid_cols = [c for c in disp_cols if c in df_hist.columns]
-                    st.dataframe(
-                        df_hist[valid_cols].sort_values(by='date', ascending=False).style.format({
-                            "price_tombul": "{:.2f}", "price_cakildak": "{:.2f}", "price_levant": "{:.2f}",
-                            "rate_usd_try": "{:.4f}", "rate_eur_try": "{:.4f}"
-                        }),
-                        use_container_width=True, hide_index=True
-                    )
+                    disp_cols = ["id", "date", "price_tombul", "price_cakildak", "price_levant", "rate_usd_try", "rate_eur_try", "created_by"]; valid_cols = [c for c in disp_cols if c in df_hist.columns]
+                    st.dataframe(df_hist[valid_cols].sort_values(by='date', ascending=False).style.format({"price_tombul": "{:.2f}", "price_cakildak": "{:.2f}", "price_levant": "{:.2f}", "rate_usd_try": "{:.4f}", "rate_eur_try": "{:.4f}"}), use_container_width=True, hide_index=True)
 
-    # ==========================
-    # FACTORY MODULES 1-6
-    # ==========================
+    # MODÜL 1-5 (Keeping condensed for brevity as no changes requested there)
     elif module == MODULE_MAP[1]:
         st.title("Modül 1: Şube Ürün Girişi"); hazelnut_cat = "Kabuklu Fındık"; st.info("Bu modül Şubelerden yapılan **Kabuklu Fındık** alımları içindir."); 
         with st.form("sube_hazelnut_form"):
@@ -324,7 +347,6 @@ else:
             if reg_type != "Emanet": st.metric("Kalan Bakiye", f"{total_val - pay_amount:,.2f} TL")
             if st.form_submit_button("✅ Şube Girişini Kaydet"):
                 payload = {"created_by": st.session_state.user['email'], "status": "Pending Arrival", "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type, "id_number": id_num, "city": city, "district": dist_in, "village": vill_in, "phone_number": contact, "cert_status": cert_status, "reg_type": reg_type, "location": location, "item_type": hazelnut_type, "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num, "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount, "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag, "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv, "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over, "moisture": val_moist, "calculated_randiman": val_randiman, "gross_price_50": price_gross, "net_price_50": net_price_50, "actual_unit_price": unit_price}; insert_record("purchases", payload); st.success("Şube Girişi Kaydedildi!")
-
     elif module == MODULE_MAP[2]:
         st.title("Modül 2: Fabrika Ürün Girişi"); tab_findik, tab_malzeme, tab_genel = st.tabs(["🌰 Fındık Alımı", "📦 Malzeme Alımı", "⚙️ Makine & Hizmet"])
         with tab_findik:
@@ -424,9 +446,7 @@ else:
                     df_logs = pd.DataFrame(logs_response.data)
                     
                     # FIX: Format the date
-                    # Convert to datetime object
                     df_logs['login_at'] = pd.to_datetime(df_logs['login_at'])
-                    # Format to string (YYYY-MM-DD HH:MM:SS)
                     df_logs['login_at'] = df_logs['login_at'].dt.strftime('%Y-%m-%d %H:%M:%S')
                     
                     df_logs.rename(columns={"email": "Kullanıcı", "login_at": "Tarih/Saat"}, inplace=True)
@@ -441,8 +461,99 @@ else:
         if not df.empty: stock = df.groupby('item_name')['quantity'].sum().reset_index(); st.dataframe(stock, use_container_width=True); st.markdown("---"); st.dataframe(df.sort_values(by='created_at', ascending=False))
         else: st.info("Hareket yok.")
 
+    # ==========================
+    # MODULE 6: OFFERS (NEW UI)
+    # ==========================
     elif module == MODULE_MAP[6]:
-        st.title("📄 Teklif Hazırlama (Offers)"); st.info("Aşağıdaki butona tıklayarak boş bir Excel teklif şablonu oluşturabilirsiniz."); col_d1, col_d2 = st.columns([1, 2])
-        with col_d1:
-            if st.button("Excel Şablonu Oluştur"):
-                with st.spinner("Excel dosyası hazırlanıyor..."): excel_data = generate_offer_excel(); st.download_button(label="📥 İndir (Avella_Offer_Sheet.xlsx)", data=excel_data, file_name="Avella_Offer_Sheet.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"); st.success("Dosya hazır! İndirme butonuna basınız.")
+        st.title("📄 Teklif Hazırlama (Offers)")
+        
+        # STATE MANAGEMENT: Menu vs Creator
+        if st.session_state.offer_step == "menu":
+            col_main = st.columns(1)[0]
+            if col_main.button("➕ Create Offer (Yeni Teklif Oluştur)", type="primary"):
+                st.session_state.offer_step = "create"
+                st.rerun()
+            
+            st.info("Click the button above to start a new offer.")
+
+        elif st.session_state.offer_step == "create":
+            # --- BACK BUTTON ---
+            if st.button("⬅️ Back to Menu"):
+                st.session_state.offer_step = "menu"
+                st.rerun()
+            
+            st.markdown("### 📝 New Offer Details")
+            
+            # --- SECTION 1: HEADER ---
+            with st.container():
+                c1, c2, c3 = st.columns(3)
+                date_val = c1.date_input("Date", value=datetime.now())
+                offer_no = c2.text_input("Offer No")
+                validity = c3.text_input("Validity")
+                
+                c4, c5, c6 = st.columns(3)
+                customer = c4.text_input("Customer Name")
+                cust_ref = c5.text_input("Cust. Ref")
+                avella_ref = c6.text_input("Avella Ref")
+                
+                c7, c8 = st.columns(2)
+                payment = c7.text_input("Payment Terms")
+                delivery = c8.text_input("Delivery Address")
+
+            st.markdown("---")
+            st.markdown("### 📦 Product List")
+
+            # --- SECTION 2: PRODUCT TABLE (Data Editor) ---
+            # Initial DataFrame Structure
+            if 'offer_rows' not in st.session_state:
+                st.session_state.offer_rows = pd.DataFrame(
+                    [{"Category": "Nuts", "Product Group": "Hazelnuts", "Total Contract Volume (kg)": 0, "Type/Process": "Natural Kernels - Whole", "Variety": "Levant", "Size": "11-13mm", "Packaging": "Bigbag", "Net Wgt (kg)": 1000, "Price": 0.0, "Currency": "USD", "Incoterms": "FCA", "Place of Delivery": "Istanbul", "Minimum Order Quantity (kg)": 1000, "Shipment Schedule": "Prompt", "Payment Terms": "CAD"}],
+                )
+
+            # Configuration for Dropdowns
+            column_config = {
+                "Category": st.column_config.SelectboxColumn("Category", options=OFFER_CONSTANTS["Categories"], required=True),
+                "Product Group": st.column_config.SelectboxColumn("Group", options=OFFER_CONSTANTS["Product_Groups"], required=True),
+                "Type/Process": st.column_config.SelectboxColumn("Type", options=OFFER_CONSTANTS["Product_Types"], required=True, width="medium"),
+                "Variety": st.column_config.SelectboxColumn("Variety", options=OFFER_CONSTANTS["Varieties"], required=True),
+                "Size": st.column_config.SelectboxColumn("Size", options=OFFER_CONSTANTS["Sizes"], required=True),
+                "Packaging": st.column_config.SelectboxColumn("Packaging", options=OFFER_CONSTANTS["Packaging"], required=True, width="medium"),
+                "Currency": st.column_config.SelectboxColumn("Currency", options=OFFER_CONSTANTS["Currencies"], required=True, width="small"),
+                "Incoterms": st.column_config.SelectboxColumn("Incoterms", options=OFFER_CONSTANTS["Incoterms"], required=True, width="small"),
+                "Total Contract Volume (kg)": st.column_config.NumberColumn("Vol (kg)", min_value=0),
+                "Net Wgt (kg)": st.column_config.NumberColumn("Net Wgt", min_value=0),
+                "Price": st.column_config.NumberColumn("Price", min_value=0.0, format="%.2f"),
+            }
+
+            edited_df = st.data_editor(
+                st.session_state.offer_rows,
+                column_config=column_config,
+                num_rows="dynamic",
+                use_container_width=True,
+                key="offer_editor"
+            )
+
+            st.markdown("---")
+            
+            # --- EXPORT BUTTON ---
+            col_export, col_dummy = st.columns([1, 4])
+            with col_export:
+                if st.button("💾 Export Offer into Excel", type="primary"):
+                    # Prepare Data
+                    header_payload = {
+                        "date": date_val, "offer_no": offer_no, "validity": validity,
+                        "customer": customer, "cust_ref": cust_ref, "avella_ref": avella_ref,
+                        "payment": payment, "delivery": delivery
+                    }
+                    
+                    # Generate
+                    with st.spinner("Generating Excel..."):
+                        excel_file = generate_offer_excel(header_data=header_payload, product_df=edited_df)
+                        
+                        # Trigger Download
+                        st.download_button(
+                            label="📥 Download Now (Avella_Offer.xlsx)",
+                            data=excel_file,
+                            file_name=f"Avella_Offer_{offer_no if offer_no else 'Draft'}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
