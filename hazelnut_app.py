@@ -95,7 +95,6 @@ def log_login(email):
     except Exception as e: print(f"Login log error: {e}")
 
 def get_product_specs():
-    """Fetches defined product specifications from DB."""
     try:
         response = supabase.table("product_specs").select("*").execute()
         return response.data
@@ -108,7 +107,6 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
     worksheet = workbook.add_worksheet('Offer Sheet')
     worksheet.set_tab_color('#107C41')
 
-    # Formats
     header_format = workbook.add_format({'bold': True, 'font_size': 14, 'color': '#203764'})
     label_format = workbook.add_format({'bold': True, 'align': 'right', 'bg_color': '#f2f2f2', 'border': 1})
     input_format = workbook.add_format({'border': 1, 'bg_color': '#ffffff'})
@@ -116,14 +114,12 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
     linked_cell_format = workbook.add_format({'bg_color': '#E7E6E6', 'border': 1, 'italic': True, 'font_color': '#595959'})
     quality_header_format = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'bg_color': '#FFC000', 'font_color': 'black', 'border': 1, 'text_wrap': True})
 
-    # Header
     worksheet.write('A1', 'AVELLA OFFER SHEET', header_format)
     headers = [("Date:", "B3", header_data.get("date", "")), ("Offer No:", "D3", header_data.get("offer_no", "")), ("Validity:", "F3", header_data.get("validity", "")), ("Customer Name:", "B4", header_data.get("customer", "")), ("Cust. Ref:", "D4", header_data.get("cust_ref", "")), ("Avella Ref:", "F4", header_data.get("avella_ref", "")), ("Payment Terms:", "B5", header_data.get("payment", "")), ("Delivery Addr:", "D5", header_data.get("delivery", ""))]
     for label, cell, val in headers:
         worksheet.write(cell, label, label_format); col_letter = cell[0]; row_num = int(cell[1:]); input_cell = chr(ord(col_letter) + 1) + str(row_num); worksheet.write(input_cell, str(val), input_format)
     worksheet.merge_range('E5:G5', "", input_format)
 
-    # Product Table
     table_start_row = 8
     columns = ["Category", "Product Group", "Total Contract Volume (kg)", "Type/Process", "Variety", "Size", "Packaging", "Net Wgt (kg)", "Price", "Currency", "Incoterms", "Place of Delivery", "Minimum Order Quantity (kg)", "Shipment Schedule", "Payment Terms"]
     for i, col_name in enumerate(columns): worksheet.write(table_start_row, i, col_name, table_header_format); worksheet.set_column(i, i, 15)
@@ -140,17 +136,20 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
                 worksheet.write(row_num, col_idx, val, input_format)
         data_rows_count = max(100, len(product_df) + 10)
 
-    # Quality Sheet
     worksheet_qual = workbook.add_worksheet('Quality Parameters'); worksheet_qual.set_tab_color('#FFC000')
     qual_ident_cols = ["Product Group (Linked)", "Type (Linked)", "Variety (Linked)", "Size (Linked)"]
-    qual_keys = list(DEFAULT_QUALITY_PARAMS.keys())
-    all_qual_cols = qual_ident_cols + qual_keys
+    used_params = set(DEFAULT_QUALITY_PARAMS.keys())
+    param_row_limit = 100
+    if product_df is not None:
+        param_row_limit = max(100, len(product_df) + 5)
+        if quality_override:
+            for ridx, params in quality_override.items():
+                used_params.update(params.keys())
+    
+    sorted_params = sorted(list(used_params))
+    all_qual_cols = qual_ident_cols + sorted_params
 
     for i, col_name in enumerate(all_qual_cols): worksheet_qual.write(table_start_row, i, col_name, quality_header_format); worksheet_qual.set_column(i, i, 22) 
-
-    # Formulas & Values
-    param_row_limit = 100
-    if product_df is not None: param_row_limit = max(100, len(product_df) + 5)
 
     for r_idx in range(param_row_limit):
         xl_row = table_start_row + 1 + r_idx + 1
@@ -159,16 +158,13 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
         worksheet_qual.write_formula(worksheet_row, 1, f"='Offer Sheet'!D{xl_row}", linked_cell_format) 
         worksheet_qual.write_formula(worksheet_row, 2, f"='Offer Sheet'!E{xl_row}", linked_cell_format) 
         worksheet_qual.write_formula(worksheet_row, 3, f"='Offer Sheet'!F{xl_row}", linked_cell_format) 
-        
         row_custom_data = {}
         if quality_override and r_idx in quality_override:
             row_custom_data = quality_override[r_idx]
-
-        for i, key in enumerate(qual_keys):
+        for i, key in enumerate(sorted_params):
             val = row_custom_data.get(key, DEFAULT_QUALITY_PARAMS.get(key, ""))
             worksheet_qual.write(worksheet_row, 4 + i, val, input_format)
 
-    # Reference Data
     ref_sheet = workbook.add_worksheet('ReferenceData'); ref_sheet.hide()
     def write_list_to_ref(header, data_list, col_idx):
         ref_sheet.write(0, col_idx, header); [ref_sheet.write(i + 1, col_idx, item) for i, item in enumerate(data_list)]; return f"=ReferenceData!${xlsxwriter.utility.xl_col_to_name(col_idx)}$2:${xlsxwriter.utility.xl_col_to_name(col_idx)}${len(data_list) + 1}"
@@ -226,21 +222,19 @@ else:
     st.sidebar.info(f"👤 {user['email']}"); st.sidebar.caption(f"Rol: {role.upper()}")
     if st.sidebar.button("Çıkış Yap"): st.session_state.user = None; st.session_state.role = None; st.rerun()
 
-    # --- DYNAMIC ROUTING LOGIC ---
-    available_menu_names = [CUSTOMER_PORTAL_NAME] # Always available to everyone as landing
+    available_menu_names = [CUSTOMER_PORTAL_NAME] # Everyone
     
-    # For Administrators, enable all (or just what they assign themselves, but usually all)
     if role == 'administrator':
         for mod_id in [1, 2, 3, 4, 5, 6, 7]:
             if mod_id in MODULE_MAP: available_menu_names.append(MODULE_MAP[mod_id])
     else:
-        # For Employee/Customer, STRICTLY use allowed_modules
+        # STRICT ACCESS CONTROL based on user table
         allowed_ids = user.get('allowed_modules', [])
         if allowed_ids is None: allowed_ids = []
         for mod_id in sorted(allowed_ids):
             if mod_id in MODULE_MAP: available_menu_names.append(MODULE_MAP[mod_id])
 
-    if len(available_menu_names) == 0: st.error("🚫 Yetkili olduğunuz modül bulunmamaktadır."); st.stop()
+    if not available_menu_names: st.error("🚫 Yetkili olduğunuz modül bulunmamaktadır."); st.stop()
     module = st.sidebar.radio("Menü", available_menu_names)
 
     # ==========================
@@ -399,26 +393,23 @@ else:
                     c_new_role = st.selectbox("Role", ["employee", "administrator", "customer"])
                     
                     st.write("**Initial Module Access:**")
-                    cols = st.columns(7)
+                    c_mod_1, c_mod_2 = st.columns(2)
                     new_mods = []
-                    # Dynamically create checkboxes for modules 1-7
+                    
                     for i in range(1, 8):
-                        if cols[i-1].checkbox(f"Mod {i}", key=f"new_mod_{i}"):
-                            new_mods.append(i)
+                        if i in MODULE_MAP:
+                            target_col = c_mod_1 if i % 2 != 0 else c_mod_2
+                            if target_col.checkbox(MODULE_MAP[i], key=f"new_mod_{i}"):
+                                new_mods.append(i)
 
                     if st.form_submit_button("Create User"):
                         if c_new_email and c_new_pass:
-                            # 1. Register Auth
                             success, msg = register_user(c_new_email, c_new_pass, role=c_new_role)
                             if success:
-                                # 2. Fetch the new ID (assumes logic in register_user or separate fetch)
-                                # Since we don't have direct access to ID from register_user in typical wrapper,
-                                # we fetch by email.
-                                time.sleep(1) # Allow DB propagation
+                                time.sleep(1) 
                                 new_user_data = supabase.table("users").select("id").eq("email", c_new_email).execute()
                                 if new_user_data.data:
                                     uid = new_user_data.data[0]['id']
-                                    # 3. Update Allowed Modules
                                     update_user_permissions(uid, True, new_mods, c_new_role)
                                     st.success(f"User {c_new_email} created with selected modules.")
                                 else:
@@ -451,26 +442,19 @@ else:
                         new_approved = st.checkbox("Account Approved", value=target_user['is_approved'])
                         current_modules = target_user.get('allowed_modules') or []
                         
-                        st.caption("Access Rights")
-                        c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
-                        m1 = c1.checkbox("1. Şube", 1 in current_modules)
-                        m2 = c2.checkbox("2. Fabrika", 2 in current_modules)
-                        m3 = c3.checkbox("3. Kantar", 3 in current_modules)
-                        m4 = c4.checkbox("4. Admin", 4 in current_modules)
-                        m5 = c5.checkbox("5. Stok", 5 in current_modules)
-                        m6 = c6.checkbox("6. Offers", 6 in current_modules)
-                        m7 = c7.checkbox("7. Quality", 7 in current_modules)
+                        st.write("**Access Rights:**")
+                        e_mod_1, e_mod_2 = st.columns(2)
+                        updated_mods = []
+                        
+                        for i in range(1, 8):
+                            if i in MODULE_MAP:
+                                target_col = e_mod_1 if i % 2 != 0 else e_mod_2
+                                is_checked = i in current_modules
+                                if target_col.checkbox(MODULE_MAP[i], value=is_checked, key=f"edit_mod_{i}"):
+                                    updated_mods.append(i)
                         
                         if st.form_submit_button("💾 Update Permissions"):
-                            new_mod_list = []
-                            if m1: new_mod_list.append(1)
-                            if m2: new_mod_list.append(2)
-                            if m3: new_mod_list.append(3)
-                            if m4: new_mod_list.append(4)
-                            if m5: new_mod_list.append(5)
-                            if m6: new_mod_list.append(6)
-                            if m7: new_mod_list.append(7)
-                            update_user_permissions(target_user['id'], new_approved, new_mod_list, new_role)
+                            update_user_permissions(target_user['id'], new_approved, updated_mods, new_role)
                             st.success("Updated!")
                             time.sleep(1)
                             st.rerun()
