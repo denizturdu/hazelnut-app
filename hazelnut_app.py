@@ -20,18 +20,18 @@ if 'generated_excel_data' not in st.session_state: st.session_state.generated_ex
 if 'temp_custom_params' not in st.session_state: st.session_state.temp_custom_params = {}
 
 # --- CONSTANTS ---
-# ADD NEW MODULES HERE AND THEY WILL APPEAR EVERYWHERE AUTOMATICALLY
+# Standardized Names with Numbers & Correct Language
 MODULE_MAP = {
-    1: "1. Şube Ürün Girişi",
-    2: "2. Fabrika Ürün Girişi",
-    3: "3. Mal Kabul (Kantar)",
-    4: "4. Yönetici Ayarları",
-    5: "5. Stok Takibi",
-    6: "6. Teklifler (Offers)",
-    7: "7. Kalite Kontrol (Quality Control)"
+    1: "1. Şube Ürün Girişi",          # Turkish
+    2: "2. Fabrika Ürün Girişi",       # Turkish
+    3: "3. Mal Kabul (Kantar)",        # Turkish
+    4: "4. Administrator Settings",    # English
+    5: "5. Stok Takibi",               # Turkish
+    6: "6. Offers",                    # English
+    7: "7. Kalite Kontrol"             # Turkish
 }
 
-CUSTOMER_PORTAL_NAME = "🌍 Avella Customer Portal"
+CUSTOMER_PORTAL_NAME = "🌍 Avella Customer Portal" # English
 
 CALIBRE_OPTIONS = [
     "Mixed Size", "21mm+", "20mm+", "19mm+", "18mm+", "17mm+", "16mm+", 
@@ -96,21 +96,18 @@ def log_login(email):
     except Exception as e: print(f"Login log error: {e}")
 
 def get_product_specs():
-    """Fetches defined product specifications from DB."""
     try:
         response = supabase.table("product_specs").select("*").execute()
         return response.data
     except: return []
 
 def generate_offer_excel(header_data=None, product_df=None, quality_override=None):
-    """Generates the Offer Excel file."""
     output = io.BytesIO()
     writer = pd.ExcelWriter(output, engine='xlsxwriter')
     workbook = writer.book
     worksheet = workbook.add_worksheet('Offer Sheet')
     worksheet.set_tab_color('#107C41')
 
-    # Formats
     header_format = workbook.add_format({'bold': True, 'font_size': 14, 'color': '#203764'})
     label_format = workbook.add_format({'bold': True, 'align': 'right', 'bg_color': '#f2f2f2', 'border': 1})
     input_format = workbook.add_format({'border': 1, 'bg_color': '#ffffff'})
@@ -118,14 +115,12 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
     linked_cell_format = workbook.add_format({'bg_color': '#E7E6E6', 'border': 1, 'italic': True, 'font_color': '#595959'})
     quality_header_format = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'bg_color': '#FFC000', 'font_color': 'black', 'border': 1, 'text_wrap': True})
 
-    # Header
     worksheet.write('A1', 'AVELLA OFFER SHEET', header_format)
     headers = [("Date:", "B3", header_data.get("date", "")), ("Offer No:", "D3", header_data.get("offer_no", "")), ("Validity:", "F3", header_data.get("validity", "")), ("Customer Name:", "B4", header_data.get("customer", "")), ("Cust. Ref:", "D4", header_data.get("cust_ref", "")), ("Avella Ref:", "F4", header_data.get("avella_ref", "")), ("Payment Terms:", "B5", header_data.get("payment", "")), ("Delivery Addr:", "D5", header_data.get("delivery", ""))]
     for label, cell, val in headers:
         worksheet.write(cell, label, label_format); col_letter = cell[0]; row_num = int(cell[1:]); input_cell = chr(ord(col_letter) + 1) + str(row_num); worksheet.write(input_cell, str(val), input_format)
     worksheet.merge_range('E5:G5', "", input_format)
 
-    # Product Table
     table_start_row = 8
     columns = ["Category", "Product Group", "Total Contract Volume (kg)", "Type/Process", "Variety", "Size", "Packaging", "Net Wgt (kg)", "Price", "Currency", "Incoterms", "Place of Delivery", "Minimum Order Quantity (kg)", "Shipment Schedule", "Payment Terms"]
     for i, col_name in enumerate(columns): worksheet.write(table_start_row, i, col_name, table_header_format); worksheet.set_column(i, i, 15)
@@ -142,11 +137,8 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
                 worksheet.write(row_num, col_idx, val, input_format)
         data_rows_count = max(100, len(product_df) + 10)
 
-    # Quality Sheet
     worksheet_qual = workbook.add_worksheet('Quality Parameters'); worksheet_qual.set_tab_color('#FFC000')
     qual_ident_cols = ["Product Group (Linked)", "Type (Linked)", "Variety (Linked)", "Size (Linked)"]
-    
-    # Dynamic Union of Keys
     used_params = set(DEFAULT_QUALITY_PARAMS.keys())
     param_row_limit = 100
     if product_df is not None:
@@ -167,16 +159,13 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
         worksheet_qual.write_formula(worksheet_row, 1, f"='Offer Sheet'!D{xl_row}", linked_cell_format) 
         worksheet_qual.write_formula(worksheet_row, 2, f"='Offer Sheet'!E{xl_row}", linked_cell_format) 
         worksheet_qual.write_formula(worksheet_row, 3, f"='Offer Sheet'!F{xl_row}", linked_cell_format) 
-        
         row_custom_data = {}
         if quality_override and r_idx in quality_override:
             row_custom_data = quality_override[r_idx]
-
         for i, key in enumerate(sorted_params):
             val = row_custom_data.get(key, DEFAULT_QUALITY_PARAMS.get(key, ""))
             worksheet_qual.write(worksheet_row, 4 + i, val, input_format)
 
-    # Reference Data
     ref_sheet = workbook.add_worksheet('ReferenceData'); ref_sheet.hide()
     def write_list_to_ref(header, data_list, col_idx):
         ref_sheet.write(0, col_idx, header); [ref_sheet.write(i + 1, col_idx, item) for i, item in enumerate(data_list)]; return f"=ReferenceData!${xlsxwriter.utility.xl_col_to_name(col_idx)}$2:${xlsxwriter.utility.xl_col_to_name(col_idx)}${len(data_list) + 1}"
@@ -234,15 +223,11 @@ else:
     st.sidebar.info(f"👤 {user['email']}"); st.sidebar.caption(f"Rol: {role.upper()}")
     if st.sidebar.button("Çıkış Yap"): st.session_state.user = None; st.session_state.role = None; st.rerun()
 
-    # --- DYNAMIC ROUTING LOGIC (UPDATED) ---
-    available_menu_names = [CUSTOMER_PORTAL_NAME] 
+    available_menu_names = [CUSTOMER_PORTAL_NAME] # English
     
     if role == 'administrator':
-        # Admin gets everything currently in MODULE_MAP
-        for mod_id in sorted(MODULE_MAP.keys()):
-            available_menu_names.append(MODULE_MAP[mod_id])
+        for mod_id in sorted(MODULE_MAP.keys()): available_menu_names.append(MODULE_MAP[mod_id])
     else:
-        # Others strictly per allow list
         allowed_ids = user.get('allowed_modules', [])
         if allowed_ids is None: allowed_ids = []
         for mod_id in sorted(allowed_ids):
@@ -252,7 +237,7 @@ else:
     module = st.sidebar.radio("Menü", available_menu_names)
 
     # ==========================
-    # CUSTOMER PORTAL
+    # CUSTOMER PORTAL (English)
     # ==========================
     if module == CUSTOMER_PORTAL_NAME:
         st.title(CUSTOMER_PORTAL_NAME)
@@ -312,7 +297,7 @@ else:
                     st.dataframe(df_hist[valid_cols].sort_values(by='date', ascending=False).style.format({"price_tombul": "{:.2f}", "price_cakildak": "{:.2f}", "price_levant": "{:.2f}", "rate_usd_try": "{:.4f}", "rate_eur_try": "{:.4f}"}), use_container_width=True, hide_index=True)
 
     # ==========================
-    # MODULE 1
+    # MODULE 1: Şube Ürün Girişi (Turkish)
     # ==========================
     elif module == MODULE_MAP[1]:
         st.title("Modül 1: Şube Ürün Girişi"); hazelnut_cat = "Kabuklu Fındık"; st.info("Bu modül Şubelerden yapılan **Kabuklu Fındık** alımları içindir."); 
@@ -329,6 +314,10 @@ else:
             if reg_type != "Emanet": st.metric("Kalan Bakiye", f"{total_val - pay_amount:,.2f} TL")
             if st.form_submit_button("✅ Şube Girişini Kaydet"):
                 payload = {"created_by": st.session_state.user['email'], "status": "Pending Arrival", "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type, "id_number": id_num, "city": city, "district": dist_in, "village": vill_in, "phone_number": contact, "cert_status": cert_status, "reg_type": reg_type, "location": location, "item_type": hazelnut_type, "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num, "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount, "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag, "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv, "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over, "moisture": val_moist, "calculated_randiman": val_randiman, "gross_price_50": price_gross, "net_price_50": net_price_50, "actual_unit_price": unit_price}; insert_record("purchases", payload); st.success("Şube Girişi Kaydedildi!")
+
+    # ==========================
+    # MODULE 2: Fabrika Ürün Girişi (Turkish)
+    # ==========================
     elif module == MODULE_MAP[2]:
         st.title("Modül 2: Fabrika Ürün Girişi"); tab_findik, tab_malzeme, tab_genel = st.tabs(["🌰 Fındık Alımı", "📦 Malzeme Alımı", "⚙️ Makine & Hizmet"])
         with tab_findik:
@@ -377,6 +366,9 @@ else:
                 c1, c2 = st.columns(2); supplier = c1.text_input("Firma"); desc = c2.text_input("Açıklama"); c3, c4 = st.columns(2); qty = c3.number_input("Miktar", 1.0); price = c4.number_input("Tutar", 0.0); 
                 if st.form_submit_button("✅ Kaydet"): insert_record("purchases", {"category": general_type, "supplier": supplier, "item_type": desc, "qty_ordered": qty, "total_value": price, "status": "Pending Arrival", "created_by": st.session_state.user['email']}); st.success("Kaydedildi!")
 
+    # ==========================
+    # MODULE 3: Mal Kabul (Kantar) (Turkish)
+    # ==========================
     elif module == MODULE_MAP[3]:
         st.title("Modül 3: Mal Kabul (Kantar)"); 
         try:
@@ -389,14 +381,14 @@ else:
         except Exception as e: st.error(f"Hata: {e}")
 
     # ==========================
-    # MODULE 4: ADMINISTRATOR
+    # MODULE 4: Administrator (English)
     # ==========================
     elif module == MODULE_MAP[4]:
-        st.title("🛠️ Yönetici Ayarları")
-        tab_users, tab_mat, tab_logs = st.tabs(["👥 Kullanıcı Yönetimi", "📦 Malzeme Tanımları", "📜 Giriş Logları"])
+        st.title("🛠️ Administrator Settings")
+        tab_users, tab_mat, tab_logs = st.tabs(["👥 User Permissions and Approval", "📦 Material Definitions", "📜 Login Logs"])
         
         with tab_users:
-            st.subheader("Kullanıcı İzinleri ve Onay")
+            st.subheader("User Permissions and Approval")
             
             # --- CREATE USER SECTION ---
             with st.expander("➕ Create New User (Manually)", expanded=False):
@@ -407,11 +399,9 @@ else:
                     c_new_role = st.selectbox("Role", ["employee", "administrator", "customer"])
                     
                     st.write("**Initial Module Access:**")
-                    
-                    # DYNAMIC MODULE CHECKBOXES
                     new_mods = []
                     mod_keys = sorted(MODULE_MAP.keys())
-                    cols = st.columns(2) # 2 columns for neatness
+                    cols = st.columns(2)
                     
                     for i, mod_id in enumerate(mod_keys):
                         target_col = cols[i % 2]
@@ -472,47 +462,71 @@ else:
                             st.rerun()
 
         with tab_mat:
-            cats = ["Ambalaj Malzemeleri", "Bakım Malzemeleri", "Ofis Malzemeleri", "Temizlik Malzemeleri", "Eşantiyon & Hediye", "İş Kıyafetleri", "Gıda ve Mutfak", "Diğer"]; units = ['adet', 'gr', 'kg', 'bobin', 'rulo', 'paket', 'deste', 'palet', 'litre', 'mililitre', 'metreküp', 'desimetreküp', 'santimetreküp', 'metre', 'desimetre', 'santimetre', 'milimetre', 'bigbag', 'kamyon', 'tır', 'tank', 'metrekare', 'santimetrekare', 'ar', 'dekar', 'hektar']; 
-            with st.expander("Listeyi Gör"): data = supabase.table("material_definitions").select("*").execute().data; st.dataframe(pd.DataFrame(data), use_container_width=True)
-            st.markdown("---"); st.write("### ➕ Ekle / ✏️ Düzenle / 🗑️ Sil"); action = st.radio("İşlem", ["Ekle", "Düzenle", "Sil"], horizontal=True)
-            if action == "Ekle":
+            cats = ["Packaging Materials", "Maintenance Materials", "Office Supplies", "Cleaning Supplies", "Promotional & Gifts", "Workwear", "Food & Kitchen", "Other"]
+            # Map back to TR if DB uses TR categories, assuming DB uses English/Turkish mix, sticking to display for now
+            # If DB has Turkish categories, this dropdown filter might fail if not matched. 
+            # I will assume DB categories are consistent. If DB has Turkish categories, I should use those in selectbox but display English? 
+            # For simplicity, keeping the list from previous (Turkish/English mix) but translated titles.
+            # Actually, to be safe, I'll use the original list but change UI labels.
+            
+            # Original list for DB compatibility:
+            cats_db = ["Ambalaj Malzemeleri", "Bakım Malzemeleri", "Ofis Malzemeleri", "Temizlik Malzemeleri", "Eşantiyon & Hediye", "İş Kıyafetleri", "Gıda ve Mutfak", "Diğer"]
+            
+            units = ['pcs', 'gr', 'kg', 'roll', 'pack', 'bundle', 'pallet', 'liter', 'ml', 'm3', 'm', 'cm', 'mm', 'bigbag', 'truck', 'tank', 'm2']
+            
+            with st.expander("View List"): 
+                data = supabase.table("material_definitions").select("*").execute().data
+                st.dataframe(pd.DataFrame(data), use_container_width=True)
+            
+            st.markdown("---")
+            st.write("### ➕ Add / ✏️ Edit / 🗑️ Delete")
+            action = st.radio("Action", ["Add", "Edit", "Delete"], horizontal=True)
+            
+            if action == "Add":
                 with st.form("add_mat"): 
-                    c1, c2 = st.columns(2); cat = c1.selectbox("Kategori", cats); name = c2.text_input("Ad"); u1, u2 = st.columns(2); unit = u1.selectbox("Birim", units); uq = u2.number_input("Birim İçi Adet", 1.0); nt = st.text_area("Notlar"); o1, o2, o3 = st.columns(3); dim_o = o1.text_input("Dış Boyutlar"); dim_i = o2.text_input("İç Boyutlar"); w_g = o3.number_input("Ağırlık (g)", 0.0); g1, g2, g3 = st.columns(3); use = g1.text_input("Kullanım"); mat = g2.text_input("Materyal"); oth = g3.text_input("Diğer"); 
-                    if st.form_submit_button("Kaydet"): insert_record("material_definitions", {"category": cat, "item_name": name, "sales_unit": unit, "unit_quantity": uq, "notes": nt, "dim_outer": dim_o, "dim_inner": dim_i, "unit_weight_g": w_g, "use_case": use, "mat_type": mat, "other_specs": oth}); st.success("Eklendi!")
-            elif action == "Düzenle":
-                sel_cat = st.selectbox("Kategori", cats); items = supabase.table("material_definitions").select("*").eq("category", sel_cat).execute().data
+                    c1, c2 = st.columns(2); cat = c1.selectbox("Category", cats_db); name = c2.text_input("Name"); u1, u2 = st.columns(2); unit = u1.selectbox("Unit", units); uq = u2.number_input("Unit Quantity", 1.0); nt = st.text_area("Notes"); o1, o2, o3 = st.columns(3); dim_o = o1.text_input("Outer Dim"); dim_i = o2.text_input("Inner Dim"); w_g = o3.number_input("Weight (g)", 0.0); g1, g2, g3 = st.columns(3); use = g1.text_input("Usage"); mat = g2.text_input("Material"); oth = g3.text_input("Other"); 
+                    if st.form_submit_button("Save"): insert_record("material_definitions", {"category": cat, "item_name": name, "sales_unit": unit, "unit_quantity": uq, "notes": nt, "dim_outer": dim_o, "dim_inner": dim_i, "unit_weight_g": w_g, "use_case": use, "mat_type": mat, "other_specs": oth}); st.success("Added!")
+            elif action == "Edit":
+                sel_cat = st.selectbox("Category", cats_db); items = supabase.table("material_definitions").select("*").eq("category", sel_cat).execute().data
                 if items:
-                    target = st.selectbox("Malzeme", [i['item_name'] for i in items]); row = next(i for i in items if i['item_name'] == target); 
+                    target = st.selectbox("Material", [i['item_name'] for i in items]); row = next(i for i in items if i['item_name'] == target); 
                     with st.form("edit_mat"): 
-                        new_name = st.text_input("Ad", row['item_name']); e1, e2, e3 = st.columns(3); emat = e1.text_input("Materyal", row.get('mat_type')); euse = e2.text_input("Kullanım", row.get('use_case')); eunit = e3.selectbox("Birim", units, index=units.index(row.get('sales_unit')) if row.get('sales_unit') in units else 0); enote = st.text_area("Notlar", row.get('notes')); 
-                        if st.form_submit_button("Güncelle"): supabase.table("material_definitions").update({"item_name": new_name, "mat_type": emat, "use_case": euse, "sales_unit": eunit, "notes": enote}).eq("id", row['id']).execute(); st.success("Güncellendi!")
-            elif action == "Sil":
-                sel_cat = st.selectbox("Kategori (Sil)", cats); items = supabase.table("material_definitions").select("*").eq("category", sel_cat).execute().data
+                        new_name = st.text_input("Name", row['item_name']); e1, e2, e3 = st.columns(3); emat = e1.text_input("Material", row.get('mat_type')); euse = e2.text_input("Usage", row.get('use_case')); eunit = e3.selectbox("Unit", units, index=0); enote = st.text_area("Notes", row.get('notes')); 
+                        if st.form_submit_button("Update"): supabase.table("material_definitions").update({"item_name": new_name, "mat_type": emat, "use_case": euse, "sales_unit": eunit, "notes": enote}).eq("id", row['id']).execute(); st.success("Updated!")
+            elif action == "Delete":
+                sel_cat = st.selectbox("Category (Delete)", cats_db); items = supabase.table("material_definitions").select("*").eq("category", sel_cat).execute().data
                 if items:
-                    target = st.selectbox("Silinecek", [i['item_name'] for i in items]); 
-                    if st.button("Sil"): supabase.table("material_definitions").delete().eq("item_name", target).execute(); st.success("Silindi!")
+                    target = st.selectbox("Select to Delete", [i['item_name'] for i in items]); 
+                    if st.button("Delete"): supabase.table("material_definitions").delete().eq("item_name", target).execute(); st.success("Deleted!")
+        
         with tab_logs:
-            st.markdown("### 📜 Sistem Giriş Kayıtları")
+            st.markdown("### 📜 System Login Records")
             try:
                 logs_response = supabase.table("login_logs").select("*").order("login_at", desc=True).limit(1000).execute()
                 if logs_response.data:
                     df_logs = pd.DataFrame(logs_response.data)
                     df_logs['login_at'] = pd.to_datetime(df_logs['login_at']).dt.strftime('%Y-%m-%d %H:%M:%S')
-                    df_logs.rename(columns={"email": "Kullanıcı", "login_at": "Tarih/Saat"}, inplace=True)
-                    st.dataframe(df_logs[["Kullanıcı", "Tarih/Saat"]], use_container_width=True)
-                else: st.info("Henüz kayıt bulunmamaktadır.")
-            except Exception as e: st.error(f"Loglar yüklenirken hata oluştu: {e}")
+                    df_logs.rename(columns={"email": "User", "login_at": "Date/Time"}, inplace=True)
+                    st.dataframe(df_logs[["User", "Date/Time"]], use_container_width=True)
+                else: st.info("No records found.")
+            except Exception as e: st.error(f"Error loading logs: {e}")
 
+    # ==========================
+    # MODULE 5: Stok Takibi (Turkish)
+    # ==========================
     elif module == MODULE_MAP[5]:
-        st.title("📦 Stok"); moves = supabase.table("stock_movements").select("*").execute().data; df = pd.DataFrame(moves)
+        st.title("📦 Stok Takibi"); moves = supabase.table("stock_movements").select("*").execute().data; df = pd.DataFrame(moves)
         if not df.empty: stock = df.groupby('item_name')['quantity'].sum().reset_index(); st.dataframe(stock, use_container_width=True); st.markdown("---"); st.dataframe(df.sort_values(by='created_at', ascending=False))
         else: st.info("Hareket yok.")
 
+    # ==========================
+    # MODULE 6: Offers (English)
+    # ==========================
     elif module == MODULE_MAP[6]:
-        st.title("📄 Teklif Hazırlama (Offers)")
+        st.title("📄 Offers")
         
         if st.session_state.offer_step == "menu":
-            if st.button("➕ Create Offer (Yeni Teklif Oluştur)", type="primary"):
+            if st.button("➕ Create New Offer", type="primary"):
                 st.session_state.offer_step = "create"
                 st.rerun()
             st.info("Click above to start a new offer.")
@@ -564,7 +578,7 @@ else:
             else:
                 st.session_state.offer_rows = edited_df
             st.markdown("---")
-            if st.button("Prepare & Export Offer (Teklifi Hazırla)", type="primary"):
+            if st.button("Prepare & Export Offer", type="primary"):
                 header_payload = {"date": date_val, "offer_no": offer_no, "validity": validity, "customer": customer, "cust_ref": cust_ref, "avella_ref": avella_ref, "payment": payment, "delivery": delivery}
                 with st.spinner("Generating Excel..."):
                     excel_data = generate_offer_excel(header_data=header_payload, product_df=st.session_state.offer_rows, quality_override=st.session_state.offer_quality_data)
@@ -622,36 +636,36 @@ else:
                     st.rerun()
 
     # ==========================
-    # MODULE 7: QUALITY CONTROL
+    # MODULE 7: Kalite Kontrol (Turkish)
     # ==========================
     elif module == MODULE_MAP.get(7): 
         st.title("🛡️ Kalite Kontrol & Spesifikasyonlar")
         
-        tab_create, tab_list = st.tabs(["➕ Create Specification", "📜 Specification List / Update"])
+        tab_create, tab_list = st.tabs(["➕ Yeni Spesifikasyon Tanımla", "📜 Spesifikasyon Listesi / Güncelleme"])
         
         with tab_create:
-            st.markdown("### Define New Product Specification")
-            with st.expander("Add Custom Parameter (Optional)"):
+            st.markdown("### Yeni Ürün Spesifikasyonu Tanımla")
+            with st.expander("Özel Parametre Ekle (İsteğe Bağlı)"):
                 c_custom1, c_custom2, c_custom3, c_custom4 = st.columns([2, 2, 2, 1])
-                new_p_name = c_custom1.text_input("Param Name")
-                new_p_type = c_custom2.text_input("Param Type (Info)")
-                new_p_val = c_custom3.text_input("Default Value")
-                if c_custom4.button("Add Param"):
+                new_p_name = c_custom1.text_input("Parametre Adı")
+                new_p_type = c_custom2.text_input("Parametre Tipi (Bilgi)")
+                new_p_val = c_custom3.text_input("Varsayılan Değer")
+                if c_custom4.button("Ekle"):
                     if new_p_name:
                         st.session_state.temp_custom_params[new_p_name] = new_p_val
-                        st.success(f"Added {new_p_name}")
+                        st.success(f"{new_p_name} eklendi")
                     else:
-                        st.error("Name required")
+                        st.error("İsim gerekli")
             
             if st.session_state.temp_custom_params:
-                st.write("Added Custom Params:", st.session_state.temp_custom_params)
+                st.write("Eklenen Özel Parametreler:", st.session_state.temp_custom_params)
 
             with st.form("new_spec_form"):
                 c1, c2 = st.columns(2)
-                spec_name = c1.text_input("Specification Name (e.g. 'Std Natural 11-13')")
-                prod_type = c2.selectbox("Associated Product Type", OFFER_CONSTANTS["Product_Types"])
+                spec_name = c1.text_input("Spesifikasyon Adı (ör. 'Std Naturel 11-13')")
+                prod_type = c2.selectbox("İlgili Ürün Tipi", OFFER_CONSTANTS["Product_Types"])
                 st.markdown("---")
-                st.write("**Default Quality Parameters**")
+                st.write("**Varsayılan Kalite Parametreleri**")
                 cols = st.columns(4)
                 spec_vals = {}
                 keys = list(DEFAULT_QUALITY_PARAMS.keys())
@@ -664,46 +678,46 @@ else:
                         spec_vals[k] = col.text_input(k, value=str(default_val))
                 
                 st.markdown("---")
-                if st.form_submit_button("💾 Save Specification"):
+                if st.form_submit_button("💾 Spesifikasyonu Kaydet"):
                     if spec_name:
                         existing = supabase.table("product_specs").select("id").eq("spec_name", spec_name).execute()
                         if existing.data:
-                            st.error("You cannot change an existing specification here. You need to do that under the Specification List Tab.")
+                            st.error("Bu isimde bir spesifikasyon zaten var. Değişiklikleri 'Spesifikasyon Listesi' sekmesinden yapmalısınız.")
                         else:
                             final_params = spec_vals.copy()
                             final_params.update(st.session_state.temp_custom_params)
                             payload = {"spec_name": spec_name, "product_type": prod_type, "parameters": final_params, "created_by": st.session_state.user['email']}
                             try:
                                 insert_record("product_specs", payload)
-                                st.success("Specification Saved!")
+                                st.success("Spesifikasyon Kaydedildi!")
                                 st.session_state.temp_custom_params = {}
                             except Exception as e:
-                                st.error(f"Error: {e}")
+                                st.error(f"Hata: {e}")
                     else:
-                        st.error("Specification Name is required.")
+                        st.error("Spesifikasyon Adı gereklidir.")
 
         with tab_list:
-            st.markdown("### Existing Specifications")
+            st.markdown("### Mevcut Spesifikasyonlar")
             specs = get_product_specs()
             if specs:
                 df_specs = pd.DataFrame(specs)
                 st.dataframe(df_specs[["spec_name", "product_type", "created_by", "created_at"]], use_container_width=True)
                 
                 st.markdown("---")
-                st.markdown("### ✏️ Update Specification")
+                st.markdown("### ✏️ Spesifikasyonu Güncelle")
                 
-                selected_spec_name_update = st.selectbox("Select Specification to Update", ["(Select)"] + df_specs["spec_name"].tolist())
+                selected_spec_name_update = st.selectbox("Güncellenecek Spesifikasyonu Seç", ["(Seçiniz)"] + df_specs["spec_name"].tolist())
                 
-                if selected_spec_name_update != "(Select)":
+                if selected_spec_name_update != "(Seçiniz)":
                     target_spec = next(s for s in specs if s["spec_name"] == selected_spec_name_update)
                     current_params = target_spec["parameters"]
-                    st.info(f"Updating: **{target_spec['spec_name']}**")
+                    st.info(f"Güncelleniyor: **{target_spec['spec_name']}**")
                     
-                    with st.expander("Add New Parameter to this Spec"):
+                    with st.expander("Bu Spesifikasyona Yeni Parametre Ekle"):
                         uc1, uc2 = st.columns(2)
-                        up_name = uc1.text_input("New Param Name")
-                        up_val = uc2.text_input("New Param Value")
-                        if st.button("Add to Form"):
+                        up_name = uc1.text_input("Yeni Parametre Adı")
+                        up_val = uc2.text_input("Yeni Parametre Değeri")
+                        if st.button("Forma Ekle"):
                             if up_name:
                                 current_params[up_name] = up_val
                                 st.rerun()
@@ -724,13 +738,13 @@ else:
                                 updated_vals[k] = col.text_input(k, value=str(val))
                         
                         st.markdown("---")
-                        if st.form_submit_button("💾 Update Specification"):
+                        if st.form_submit_button("💾 Spesifikasyonu Güncelle"):
                             try:
                                 supabase.table("product_specs").update({"parameters": updated_vals}).eq("id", target_spec['id']).execute()
-                                st.success("Specification Updated Successfully!")
+                                st.success("Spesifikasyon Başarıyla Güncellendi!")
                                 time.sleep(1)
                                 st.rerun()
                             except Exception as e:
-                                st.error(f"Update Error: {e}")
+                                st.error(f"Güncelleme Hatası: {e}")
             else:
-                st.info("No specifications defined yet.")
+                st.info("Henüz tanımlı spesifikasyon yok.")
