@@ -21,17 +21,24 @@ if 'temp_custom_params' not in st.session_state: st.session_state.temp_custom_pa
 
 # --- CONSTANTS ---
 # Standardized Names with Numbers & Correct Language
+# Group 1: Avella Turkiye (1, 2, 3, 5, 7)
+# Group 2: Avella Management (4, 6)
 MODULE_MAP = {
     1: "1. Şube Ürün Girişi",          # Turkish
     2: "2. Fabrika Ürün Girişi",       # Turkish
-    3: "3. Mal Kabul (Kantar)",        # Turkish
+    3: "3. Üretim - Kırma",            # Turkish (Renamed from Mal Kabul)
     4: "4. Administrator Settings",    # English
     5: "5. Stok Takibi",               # Turkish
     6: "6. Offers",                    # English
     7: "7. Kalite Kontrol"             # Turkish
 }
 
+# Group 3: Partners
 CUSTOMER_PORTAL_NAME = "🌍 Avella Customer Portal" # English
+
+# Defined Groups for Sidebar Ordering
+GROUP_TURKIYE = [1, 2, 3, 5, 7]
+GROUP_MANAGEMENT = [4, 6]
 
 CALIBRE_OPTIONS = [
     "Mixed Size", "21mm+", "20mm+", "19mm+", "18mm+", "17mm+", "16mm+", 
@@ -96,18 +103,21 @@ def log_login(email):
     except Exception as e: print(f"Login log error: {e}")
 
 def get_product_specs():
+    """Fetches defined product specifications from DB."""
     try:
         response = supabase.table("product_specs").select("*").execute()
         return response.data
     except: return []
 
 def generate_offer_excel(header_data=None, product_df=None, quality_override=None):
+    """Generates the Offer Excel file."""
     output = io.BytesIO()
     writer = pd.ExcelWriter(output, engine='xlsxwriter')
     workbook = writer.book
     worksheet = workbook.add_worksheet('Offer Sheet')
     worksheet.set_tab_color('#107C41')
 
+    # Formats
     header_format = workbook.add_format({'bold': True, 'font_size': 14, 'color': '#203764'})
     label_format = workbook.add_format({'bold': True, 'align': 'right', 'bg_color': '#f2f2f2', 'border': 1})
     input_format = workbook.add_format({'border': 1, 'bg_color': '#ffffff'})
@@ -115,12 +125,14 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
     linked_cell_format = workbook.add_format({'bg_color': '#E7E6E6', 'border': 1, 'italic': True, 'font_color': '#595959'})
     quality_header_format = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'bg_color': '#FFC000', 'font_color': 'black', 'border': 1, 'text_wrap': True})
 
+    # Header
     worksheet.write('A1', 'AVELLA OFFER SHEET', header_format)
     headers = [("Date:", "B3", header_data.get("date", "")), ("Offer No:", "D3", header_data.get("offer_no", "")), ("Validity:", "F3", header_data.get("validity", "")), ("Customer Name:", "B4", header_data.get("customer", "")), ("Cust. Ref:", "D4", header_data.get("cust_ref", "")), ("Avella Ref:", "F4", header_data.get("avella_ref", "")), ("Payment Terms:", "B5", header_data.get("payment", "")), ("Delivery Addr:", "D5", header_data.get("delivery", ""))]
     for label, cell, val in headers:
         worksheet.write(cell, label, label_format); col_letter = cell[0]; row_num = int(cell[1:]); input_cell = chr(ord(col_letter) + 1) + str(row_num); worksheet.write(input_cell, str(val), input_format)
     worksheet.merge_range('E5:G5', "", input_format)
 
+    # Product Table
     table_start_row = 8
     columns = ["Category", "Product Group", "Total Contract Volume (kg)", "Type/Process", "Variety", "Size", "Packaging", "Net Wgt (kg)", "Price", "Currency", "Incoterms", "Place of Delivery", "Minimum Order Quantity (kg)", "Shipment Schedule", "Payment Terms"]
     for i, col_name in enumerate(columns): worksheet.write(table_start_row, i, col_name, table_header_format); worksheet.set_column(i, i, 15)
@@ -137,20 +149,17 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
                 worksheet.write(row_num, col_idx, val, input_format)
         data_rows_count = max(100, len(product_df) + 10)
 
+    # Quality Sheet
     worksheet_qual = workbook.add_worksheet('Quality Parameters'); worksheet_qual.set_tab_color('#FFC000')
     qual_ident_cols = ["Product Group (Linked)", "Type (Linked)", "Variety (Linked)", "Size (Linked)"]
-    used_params = set(DEFAULT_QUALITY_PARAMS.keys())
-    param_row_limit = 100
-    if product_df is not None:
-        param_row_limit = max(100, len(product_df) + 5)
-        if quality_override:
-            for ridx, params in quality_override.items():
-                used_params.update(params.keys())
-    
-    sorted_params = sorted(list(used_params))
-    all_qual_cols = qual_ident_cols + sorted_params
+    qual_keys = list(DEFAULT_QUALITY_PARAMS.keys())
+    all_qual_cols = qual_ident_cols + qual_keys
 
     for i, col_name in enumerate(all_qual_cols): worksheet_qual.write(table_start_row, i, col_name, quality_header_format); worksheet_qual.set_column(i, i, 22) 
+
+    # Formulas & Values
+    param_row_limit = 100
+    if product_df is not None: param_row_limit = max(100, len(product_df) + 5)
 
     for r_idx in range(param_row_limit):
         xl_row = table_start_row + 1 + r_idx + 1
@@ -159,13 +168,16 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
         worksheet_qual.write_formula(worksheet_row, 1, f"='Offer Sheet'!D{xl_row}", linked_cell_format) 
         worksheet_qual.write_formula(worksheet_row, 2, f"='Offer Sheet'!E{xl_row}", linked_cell_format) 
         worksheet_qual.write_formula(worksheet_row, 3, f"='Offer Sheet'!F{xl_row}", linked_cell_format) 
+        
         row_custom_data = {}
         if quality_override and r_idx in quality_override:
             row_custom_data = quality_override[r_idx]
-        for i, key in enumerate(sorted_params):
+
+        for i, key in enumerate(qual_keys):
             val = row_custom_data.get(key, DEFAULT_QUALITY_PARAMS.get(key, ""))
             worksheet_qual.write(worksheet_row, 4 + i, val, input_format)
 
+    # Reference Data
     ref_sheet = workbook.add_worksheet('ReferenceData'); ref_sheet.hide()
     def write_list_to_ref(header, data_list, col_idx):
         ref_sheet.write(0, col_idx, header); [ref_sheet.write(i + 1, col_idx, item) for i, item in enumerate(data_list)]; return f"=ReferenceData!${xlsxwriter.utility.xl_col_to_name(col_idx)}$2:${xlsxwriter.utility.xl_col_to_name(col_idx)}${len(data_list) + 1}"
@@ -223,21 +235,35 @@ else:
     st.sidebar.info(f"👤 {user['email']}"); st.sidebar.caption(f"Rol: {role.upper()}")
     if st.sidebar.button("Çıkış Yap"): st.session_state.user = None; st.session_state.role = None; st.rerun()
 
-    available_menu_names = [CUSTOMER_PORTAL_NAME] # English
+    # --- DYNAMIC ROUTING & ORDERING ---
+    # Constructing the menu based on the 3 Requested Groups
+    available_menu_names = []
     
-    if role == 'administrator':
-        for mod_id in sorted(MODULE_MAP.keys()): available_menu_names.append(MODULE_MAP[mod_id])
-    else:
-        allowed_ids = user.get('allowed_modules', [])
-        if allowed_ids is None: allowed_ids = []
-        for mod_id in sorted(allowed_ids):
-            if mod_id in MODULE_MAP: available_menu_names.append(MODULE_MAP[mod_id])
+    # Check permissions helper
+    def has_access(mod_id):
+        if role == 'administrator': return True
+        allowed = user.get('allowed_modules', [])
+        return mod_id in allowed
 
-    if len(available_menu_names) == 0: st.error("🚫 Yetkili olduğunuz modül bulunmamaktadır."); st.stop()
+    # 1. Avella Turkiye
+    available_menu_names.append(MODULE_MAP[1]) if has_access(1) else None
+    available_menu_names.append(MODULE_MAP[2]) if has_access(2) else None
+    available_menu_names.append(MODULE_MAP[3]) if has_access(3) else None
+    available_menu_names.append(MODULE_MAP[5]) if has_access(5) else None
+    available_menu_names.append(MODULE_MAP[7]) if has_access(7) else None
+
+    # 2. Avella Management
+    available_menu_names.append(MODULE_MAP[4]) if has_access(4) else None
+    available_menu_names.append(MODULE_MAP[6]) if has_access(6) else None
+    
+    # 3. Partners
+    available_menu_names.append(CUSTOMER_PORTAL_NAME) # Everyone has portal
+
+    if not available_menu_names: st.error("🚫 Yetkili olduğunuz modül bulunmamaktadır."); st.stop()
     module = st.sidebar.radio("Menü", available_menu_names)
 
     # ==========================
-    # CUSTOMER PORTAL (English)
+    # CUSTOMER PORTAL
     # ==========================
     if module == CUSTOMER_PORTAL_NAME:
         st.title(CUSTOMER_PORTAL_NAME)
@@ -297,7 +323,7 @@ else:
                     st.dataframe(df_hist[valid_cols].sort_values(by='date', ascending=False).style.format({"price_tombul": "{:.2f}", "price_cakildak": "{:.2f}", "price_levant": "{:.2f}", "rate_usd_try": "{:.4f}", "rate_eur_try": "{:.4f}"}), use_container_width=True, hide_index=True)
 
     # ==========================
-    # MODULE 1: Şube Ürün Girişi (Turkish)
+    # MODULE 1
     # ==========================
     elif module == MODULE_MAP[1]:
         st.title("Modül 1: Şube Ürün Girişi"); hazelnut_cat = "Kabuklu Fındık"; st.info("Bu modül Şubelerden yapılan **Kabuklu Fındık** alımları içindir."); 
@@ -314,10 +340,6 @@ else:
             if reg_type != "Emanet": st.metric("Kalan Bakiye", f"{total_val - pay_amount:,.2f} TL")
             if st.form_submit_button("✅ Şube Girişini Kaydet"):
                 payload = {"created_by": st.session_state.user['email'], "status": "Pending Arrival", "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type, "id_number": id_num, "city": city, "district": dist_in, "village": vill_in, "phone_number": contact, "cert_status": cert_status, "reg_type": reg_type, "location": location, "item_type": hazelnut_type, "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num, "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount, "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag, "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv, "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over, "moisture": val_moist, "calculated_randiman": val_randiman, "gross_price_50": price_gross, "net_price_50": net_price_50, "actual_unit_price": unit_price}; insert_record("purchases", payload); st.success("Şube Girişi Kaydedildi!")
-
-    # ==========================
-    # MODULE 2: Fabrika Ürün Girişi (Turkish)
-    # ==========================
     elif module == MODULE_MAP[2]:
         st.title("Modül 2: Fabrika Ürün Girişi"); tab_findik, tab_malzeme, tab_genel = st.tabs(["🌰 Fındık Alımı", "📦 Malzeme Alımı", "⚙️ Makine & Hizmet"])
         with tab_findik:
@@ -367,10 +389,10 @@ else:
                 if st.form_submit_button("✅ Kaydet"): insert_record("purchases", {"category": general_type, "supplier": supplier, "item_type": desc, "qty_ordered": qty, "total_value": price, "status": "Pending Arrival", "created_by": st.session_state.user['email']}); st.success("Kaydedildi!")
 
     # ==========================
-    # MODULE 3: Mal Kabul (Kantar) (Turkish)
+    # MODULE 3: Üretim - Kırma (Turkish)
     # ==========================
     elif module == MODULE_MAP[3]:
-        st.title("Modül 3: Mal Kabul (Kantar)"); 
+        st.title("Modül 3: Üretim - Kırma"); 
         try:
             response = supabase.table("purchases").select("*").eq("status", "Pending Arrival").execute(); pending_df = pd.DataFrame(response.data)
             if not pending_df.empty:
@@ -462,54 +484,36 @@ else:
                             st.rerun()
 
         with tab_mat:
-            cats = ["Packaging Materials", "Maintenance Materials", "Office Supplies", "Cleaning Supplies", "Promotional & Gifts", "Workwear", "Food & Kitchen", "Other"]
-            # Map back to TR if DB uses TR categories, assuming DB uses English/Turkish mix, sticking to display for now
-            # If DB has Turkish categories, this dropdown filter might fail if not matched. 
-            # I will assume DB categories are consistent. If DB has Turkish categories, I should use those in selectbox but display English? 
-            # For simplicity, keeping the list from previous (Turkish/English mix) but translated titles.
-            # Actually, to be safe, I'll use the original list but change UI labels.
-            
-            # Original list for DB compatibility:
-            cats_db = ["Ambalaj Malzemeleri", "Bakım Malzemeleri", "Ofis Malzemeleri", "Temizlik Malzemeleri", "Eşantiyon & Hediye", "İş Kıyafetleri", "Gıda ve Mutfak", "Diğer"]
-            
-            units = ['pcs', 'gr', 'kg', 'roll', 'pack', 'bundle', 'pallet', 'liter', 'ml', 'm3', 'm', 'cm', 'mm', 'bigbag', 'truck', 'tank', 'm2']
-            
-            with st.expander("View List"): 
-                data = supabase.table("material_definitions").select("*").execute().data
-                st.dataframe(pd.DataFrame(data), use_container_width=True)
-            
-            st.markdown("---")
-            st.write("### ➕ Add / ✏️ Edit / 🗑️ Delete")
-            action = st.radio("Action", ["Add", "Edit", "Delete"], horizontal=True)
-            
-            if action == "Add":
+            cats = ["Ambalaj Malzemeleri", "Bakım Malzemeleri", "Ofis Malzemeleri", "Temizlik Malzemeleri", "Eşantiyon & Hediye", "İş Kıyafetleri", "Gıda ve Mutfak", "Diğer"]; units = ['adet', 'gr', 'kg', 'bobin', 'rulo', 'paket', 'deste', 'palet', 'litre', 'mililitre', 'metreküp', 'desimetreküp', 'santimetreküp', 'metre', 'desimetre', 'santimetre', 'milimetre', 'bigbag', 'kamyon', 'tır', 'tank', 'metrekare', 'santimetrekare', 'ar', 'dekar', 'hektar']; 
+            with st.expander("Listeyi Gör"): data = supabase.table("material_definitions").select("*").execute().data; st.dataframe(pd.DataFrame(data), use_container_width=True)
+            st.markdown("---"); st.write("### ➕ Ekle / ✏️ Düzenle / 🗑️ Sil"); action = st.radio("İşlem", ["Ekle", "Düzenle", "Sil"], horizontal=True)
+            if action == "Ekle":
                 with st.form("add_mat"): 
-                    c1, c2 = st.columns(2); cat = c1.selectbox("Category", cats_db); name = c2.text_input("Name"); u1, u2 = st.columns(2); unit = u1.selectbox("Unit", units); uq = u2.number_input("Unit Quantity", 1.0); nt = st.text_area("Notes"); o1, o2, o3 = st.columns(3); dim_o = o1.text_input("Outer Dim"); dim_i = o2.text_input("Inner Dim"); w_g = o3.number_input("Weight (g)", 0.0); g1, g2, g3 = st.columns(3); use = g1.text_input("Usage"); mat = g2.text_input("Material"); oth = g3.text_input("Other"); 
-                    if st.form_submit_button("Save"): insert_record("material_definitions", {"category": cat, "item_name": name, "sales_unit": unit, "unit_quantity": uq, "notes": nt, "dim_outer": dim_o, "dim_inner": dim_i, "unit_weight_g": w_g, "use_case": use, "mat_type": mat, "other_specs": oth}); st.success("Added!")
-            elif action == "Edit":
-                sel_cat = st.selectbox("Category", cats_db); items = supabase.table("material_definitions").select("*").eq("category", sel_cat).execute().data
+                    c1, c2 = st.columns(2); cat = c1.selectbox("Kategori", cats); name = c2.text_input("Ad"); u1, u2 = st.columns(2); unit = u1.selectbox("Birim", units); uq = u2.number_input("Birim İçi Adet", 1.0); nt = st.text_area("Notlar"); o1, o2, o3 = st.columns(3); dim_o = o1.text_input("Dış Boyutlar"); dim_i = o2.text_input("İç Boyutlar"); w_g = o3.number_input("Ağırlık (g)", 0.0); g1, g2, g3 = st.columns(3); use = g1.text_input("Kullanım"); mat = g2.text_input("Materyal"); oth = g3.text_input("Diğer"); 
+                    if st.form_submit_button("Kaydet"): insert_record("material_definitions", {"category": cat, "item_name": name, "sales_unit": unit, "unit_quantity": uq, "notes": nt, "dim_outer": dim_o, "dim_inner": dim_i, "unit_weight_g": w_g, "use_case": use, "mat_type": mat, "other_specs": oth}); st.success("Eklendi!")
+            elif action == "Düzenle":
+                sel_cat = st.selectbox("Kategori", cats); items = supabase.table("material_definitions").select("*").eq("category", sel_cat).execute().data
                 if items:
-                    target = st.selectbox("Material", [i['item_name'] for i in items]); row = next(i for i in items if i['item_name'] == target); 
+                    target = st.selectbox("Malzeme", [i['item_name'] for i in items]); row = next(i for i in items if i['item_name'] == target); 
                     with st.form("edit_mat"): 
-                        new_name = st.text_input("Name", row['item_name']); e1, e2, e3 = st.columns(3); emat = e1.text_input("Material", row.get('mat_type')); euse = e2.text_input("Usage", row.get('use_case')); eunit = e3.selectbox("Unit", units, index=0); enote = st.text_area("Notes", row.get('notes')); 
-                        if st.form_submit_button("Update"): supabase.table("material_definitions").update({"item_name": new_name, "mat_type": emat, "use_case": euse, "sales_unit": eunit, "notes": enote}).eq("id", row['id']).execute(); st.success("Updated!")
-            elif action == "Delete":
-                sel_cat = st.selectbox("Category (Delete)", cats_db); items = supabase.table("material_definitions").select("*").eq("category", sel_cat).execute().data
+                        new_name = st.text_input("Ad", row['item_name']); e1, e2, e3 = st.columns(3); emat = e1.text_input("Materyal", row.get('mat_type')); euse = e2.text_input("Kullanım", row.get('use_case')); eunit = e3.selectbox("Birim", units, index=units.index(row.get('sales_unit')) if row.get('sales_unit') in units else 0); enote = st.text_area("Notlar", row.get('notes')); 
+                        if st.form_submit_button("Güncelle"): supabase.table("material_definitions").update({"item_name": new_name, "mat_type": emat, "use_case": euse, "sales_unit": eunit, "notes": enote}).eq("id", row['id']).execute(); st.success("Güncellendi!")
+            elif action == "Sil":
+                sel_cat = st.selectbox("Kategori (Sil)", cats); items = supabase.table("material_definitions").select("*").eq("category", sel_cat).execute().data
                 if items:
-                    target = st.selectbox("Select to Delete", [i['item_name'] for i in items]); 
-                    if st.button("Delete"): supabase.table("material_definitions").delete().eq("item_name", target).execute(); st.success("Deleted!")
-        
+                    target = st.selectbox("Silinecek", [i['item_name'] for i in items]); 
+                    if st.button("Sil"): supabase.table("material_definitions").delete().eq("item_name", target).execute(); st.success("Silindi!")
         with tab_logs:
-            st.markdown("### 📜 System Login Records")
+            st.markdown("### 📜 Sistem Giriş Kayıtları")
             try:
                 logs_response = supabase.table("login_logs").select("*").order("login_at", desc=True).limit(1000).execute()
                 if logs_response.data:
                     df_logs = pd.DataFrame(logs_response.data)
                     df_logs['login_at'] = pd.to_datetime(df_logs['login_at']).dt.strftime('%Y-%m-%d %H:%M:%S')
-                    df_logs.rename(columns={"email": "User", "login_at": "Date/Time"}, inplace=True)
-                    st.dataframe(df_logs[["User", "Date/Time"]], use_container_width=True)
-                else: st.info("No records found.")
-            except Exception as e: st.error(f"Error loading logs: {e}")
+                    df_logs.rename(columns={"email": "Kullanıcı", "login_at": "Tarih/Saat"}, inplace=True)
+                    st.dataframe(df_logs[["Kullanıcı", "Tarih/Saat"]], use_container_width=True)
+                else: st.info("Henüz kayıt bulunmamaktadır.")
+            except Exception as e: st.error(f"Loglar yüklenirken hata oluştu: {e}")
 
     # ==========================
     # MODULE 5: Stok Takibi (Turkish)
