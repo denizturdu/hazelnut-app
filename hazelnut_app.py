@@ -13,6 +13,7 @@ st.set_page_config(page_title="Fındık Fabrikası Yönetimi", layout="wide")
 # --- SESSION STATE SETUP ---
 if 'user' not in st.session_state: st.session_state.user = None
 if 'role' not in st.session_state: st.session_state.role = None
+if 'active_module' not in st.session_state: st.session_state.active_module = "🌍 Avella Customer Portal" # Default
 if 'offer_step' not in st.session_state: st.session_state.offer_step = "menu"
 if 'offer_quality_data' not in st.session_state: st.session_state.offer_quality_data = {} 
 if 'active_quality_row' not in st.session_state: st.session_state.active_quality_row = None
@@ -20,10 +21,8 @@ if 'generated_excel_data' not in st.session_state: st.session_state.generated_ex
 if 'temp_custom_params' not in st.session_state: st.session_state.temp_custom_params = {}
 
 # --- CONSTANTS ---
-# MAPPING IDs to Display Names
 MODULE_MAP = {
-    1: "1. Satın Alma ve Giriş İşlemleri", # Combined Mod 1 & 2
-    # ID 2 is deprecated/merged into 1
+    1: "1. Satın Alma ve Giriş İşlemleri",
     3: "2. Üretim - Kırma",            
     5: "3. Stok Takibi",               
     7: "4. Kalite Kontrol",
@@ -33,17 +32,7 @@ MODULE_MAP = {
 
 CUSTOMER_PORTAL_NAME = "🌍 Avella Customer Portal"
 
-CALIBRE_OPTIONS = [
-    "Mixed Size", "21mm+", "20mm+", "19mm+", "18mm+", "17mm+", "16mm+", 
-    "15-16mm", "14-15mm", "13-15mm", "13-14mm", "12-14mm", "12-13mm", 
-    "11-13mm", "11-12mm", "10-12mm", "10-11mm", "9-11mm", "9-10mm", 
-    "9mm-", "9mm+", "0-2mm", "1-3mm", "2-4mm", "4-6mm", "5-7mm", 
-    "6-8mm", "7-11mm", "3-11mm", "5-11mm", "15μ", "18μ", "20μ", 
-    "21μ", "22μ", "23μ", "24μ", "25μ", "26μ", "27μ", "28μ", "29μ", 
-    "30μ", "31μ", "32μ", "33μ", "34μ", "35μ"
-]
-
-# --- OFFER MASTER DATA ---
+# --- HELPER DATA ---
 OFFER_CONSTANTS = {
     "Categories": ["Nuts", "Dried Fruit", "Oil", "Chocolate"],
     "Product_Groups": ["Hazelnuts", "Walnuts", "Pistachios", "Almonds", "Peanuts", "Cashew Nuts", "Brazil Nuts", "Pine Nuts", "Macadamia Nuts", "Pecan Nuts", "Apricots", "Raisins", "Figs", "Plums", "Hazelnut Oil", "Olive Oil", "Hazelnut Cream", "Hazelnut Crunch", "Pistachio Cream", "Pistachio Crunch"],
@@ -55,17 +44,11 @@ OFFER_CONSTANTS = {
     "Incoterms": ["EXW", "FCA", "CPT", "CIP", "DAP", "DPU", "DDP", "FAS", "FOB", "CFR", "CIF"]
 }
 
-DEFAULT_QUALITY_PARAMS = {
-    "Target Humidity %": "", "Maximum FFA %": 1, "Maximum Peroxide": 1, "Maximum Oversize %": 5,
-    "Maximum Undersize %": 5, "Maximum Visible Rotten %": 2, "Maximum Hidden Rotten %": 2.5,
-    "Maximum Visible Mouldy %": 0.5, "Maximum Hidden Mouldy %": 0.5, "Maximum Visible Tumorous %": 5,
-    "Maximum Hidden Tumorous %": 5, "Maximum Insect Damaged %": 0, "Maximum Twin Kernels %": 2,
-    "Maximum Mech. Damaged %": 8, "Maximum Broken %": 4, "Maximum Rancid %": 1,
-    "Maximum Shrivelled %": 2.5, "Maximum Other Types %": 10, "Maximum Shell Pieces": "0.01%",
-    "Maximum Foreign Matter": 0
-}
+CALIBRE_OPTIONS = ["Mixed Size", "21mm+", "20mm+", "19mm+", "18mm+", "17mm+", "16mm+", "15-16mm", "14-15mm", "13-15mm", "13-14mm", "12-14mm", "12-13mm", "11-13mm", "11-12mm", "10-12mm", "10-11mm", "9-11mm", "9-10mm", "9mm-", "9mm+", "0-2mm", "1-3mm", "2-4mm", "4-6mm", "5-7mm", "6-8mm", "7-11mm", "3-11mm", "5-11mm", "15μ", "18μ", "20μ", "21μ", "22μ", "23μ", "24μ", "25μ", "26μ", "27μ", "28μ", "29μ", "30μ", "31μ", "32μ", "33μ", "34μ", "35μ"]
 
-# --- HELPER FUNCTIONS ---
+DEFAULT_QUALITY_PARAMS = {"Target Humidity %": "", "Maximum FFA %": 1, "Maximum Peroxide": 1, "Maximum Oversize %": 5, "Maximum Undersize %": 5, "Maximum Visible Rotten %": 2, "Maximum Hidden Rotten %": 2.5, "Maximum Visible Mouldy %": 0.5, "Maximum Hidden Mouldy %": 0.5, "Maximum Visible Tumorous %": 5, "Maximum Hidden Tumorous %": 5, "Maximum Insect Damaged %": 0, "Maximum Twin Kernels %": 2, "Maximum Mech. Damaged %": 8, "Maximum Broken %": 4, "Maximum Rancid %": 1, "Maximum Shrivelled %": 2.5, "Maximum Other Types %": 10, "Maximum Shell Pieces": "0.01%", "Maximum Foreign Matter": 0}
+
+# --- FUNCTIONS ---
 def calculate_randiman(sample_w, good, shriv):
     if sample_w == 0: return 0.0
     return ((good + (shriv / 2)) / sample_w) * 100
@@ -93,24 +76,19 @@ def get_live_rates():
 
 def log_login(email):
     try: supabase.table("login_logs").insert({"email": email}).execute()
-    except Exception as e: print(f"Login log error: {e}")
+    except: pass
 
 def get_product_specs():
-    """Fetches defined product specifications from DB."""
-    try:
-        response = supabase.table("product_specs").select("*").execute()
-        return response.data
+    try: return supabase.table("product_specs").select("*").execute().data
     except: return []
 
 def generate_offer_excel(header_data=None, product_df=None, quality_override=None):
-    """Generates the Offer Excel file."""
     output = io.BytesIO()
     writer = pd.ExcelWriter(output, engine='xlsxwriter')
     workbook = writer.book
     worksheet = workbook.add_worksheet('Offer Sheet')
     worksheet.set_tab_color('#107C41')
 
-    # Formats
     header_format = workbook.add_format({'bold': True, 'font_size': 14, 'color': '#203764'})
     label_format = workbook.add_format({'bold': True, 'align': 'right', 'bg_color': '#f2f2f2', 'border': 1})
     input_format = workbook.add_format({'border': 1, 'bg_color': '#ffffff'})
@@ -118,41 +96,38 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
     linked_cell_format = workbook.add_format({'bg_color': '#E7E6E6', 'border': 1, 'italic': True, 'font_color': '#595959'})
     quality_header_format = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'bg_color': '#FFC000', 'font_color': 'black', 'border': 1, 'text_wrap': True})
 
-    # Header
     worksheet.write('A1', 'AVELLA OFFER SHEET', header_format)
     headers = [("Date:", "B3", header_data.get("date", "")), ("Offer No:", "D3", header_data.get("offer_no", "")), ("Validity:", "F3", header_data.get("validity", "")), ("Customer Name:", "B4", header_data.get("customer", "")), ("Cust. Ref:", "D4", header_data.get("cust_ref", "")), ("Avella Ref:", "F4", header_data.get("avella_ref", "")), ("Payment Terms:", "B5", header_data.get("payment", "")), ("Delivery Addr:", "D5", header_data.get("delivery", ""))]
     for label, cell, val in headers:
         worksheet.write(cell, label, label_format); col_letter = cell[0]; row_num = int(cell[1:]); input_cell = chr(ord(col_letter) + 1) + str(row_num); worksheet.write(input_cell, str(val), input_format)
     worksheet.merge_range('E5:G5', "", input_format)
 
-    # Product Table
     table_start_row = 8
     columns = ["Category", "Product Group", "Total Contract Volume (kg)", "Type/Process", "Variety", "Size", "Packaging", "Net Wgt (kg)", "Price", "Currency", "Incoterms", "Place of Delivery", "Minimum Order Quantity (kg)", "Shipment Schedule", "Payment Terms"]
     for i, col_name in enumerate(columns): worksheet.write(table_start_row, i, col_name, table_header_format); worksheet.set_column(i, i, 15)
     
     worksheet.set_column('B:B', 20); worksheet.set_column('C:C', 20); worksheet.set_column('D:D', 25); worksheet.set_column('E:E', 20); worksheet.set_column('G:G', 25); worksheet.set_column('L:L', 20); worksheet.set_column('M:M', 25); worksheet.set_column('N:N', 20); worksheet.set_column('O:O', 20)
 
-    data_rows_count = 100
     if product_df is not None and not product_df.empty:
-        valid_cols = [c for c in columns if c in product_df.columns]
         for idx, row in product_df.iterrows():
             row_num = table_start_row + 1 + idx
             for col_idx, col_name in enumerate(columns):
                 val = row.get(col_name, "")
                 worksheet.write(row_num, col_idx, val, input_format)
-        data_rows_count = max(100, len(product_df) + 10)
 
-    # Quality Sheet
     worksheet_qual = workbook.add_worksheet('Quality Parameters'); worksheet_qual.set_tab_color('#FFC000')
     qual_ident_cols = ["Product Group (Linked)", "Type (Linked)", "Variety (Linked)", "Size (Linked)"]
-    qual_keys = list(DEFAULT_QUALITY_PARAMS.keys())
-    all_qual_cols = qual_ident_cols + qual_keys
+    used_params = set(DEFAULT_QUALITY_PARAMS.keys())
+    param_row_limit = 100
+    if product_df is not None:
+        param_row_limit = max(100, len(product_df) + 5)
+        if quality_override:
+            for ridx, params in quality_override.items(): used_params.update(params.keys())
+    
+    sorted_params = sorted(list(used_params))
+    all_qual_cols = qual_ident_cols + sorted_params
 
     for i, col_name in enumerate(all_qual_cols): worksheet_qual.write(table_start_row, i, col_name, quality_header_format); worksheet_qual.set_column(i, i, 22) 
-
-    # Formulas & Values
-    param_row_limit = 100
-    if product_df is not None: param_row_limit = max(100, len(product_df) + 5)
 
     for r_idx in range(param_row_limit):
         xl_row = table_start_row + 1 + r_idx + 1
@@ -161,23 +136,19 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
         worksheet_qual.write_formula(worksheet_row, 1, f"='Offer Sheet'!D{xl_row}", linked_cell_format) 
         worksheet_qual.write_formula(worksheet_row, 2, f"='Offer Sheet'!E{xl_row}", linked_cell_format) 
         worksheet_qual.write_formula(worksheet_row, 3, f"='Offer Sheet'!F{xl_row}", linked_cell_format) 
-        
         row_custom_data = {}
-        if quality_override and r_idx in quality_override:
-            row_custom_data = quality_override[r_idx]
-
-        for i, key in enumerate(qual_keys):
-            val = row_custom_data.get(key, DEFAULT_QUALITY_PARAMS[key])
+        if quality_override and r_idx in quality_override: row_custom_data = quality_override[r_idx]
+        for i, key in enumerate(sorted_params):
+            val = row_custom_data.get(key, DEFAULT_QUALITY_PARAMS.get(key, ""))
             worksheet_qual.write(worksheet_row, 4 + i, val, input_format)
 
-    # Reference Data
     ref_sheet = workbook.add_worksheet('ReferenceData'); ref_sheet.hide()
     def write_list_to_ref(header, data_list, col_idx):
         ref_sheet.write(0, col_idx, header); [ref_sheet.write(i + 1, col_idx, item) for i, item in enumerate(data_list)]; return f"=ReferenceData!${xlsxwriter.utility.xl_col_to_name(col_idx)}$2:${xlsxwriter.utility.xl_col_to_name(col_idx)}${len(data_list) + 1}"
     
     cat_range = write_list_to_ref("Categories", OFFER_CONSTANTS["Categories"], 0); group_range = write_list_to_ref("Groups", OFFER_CONSTANTS["Product_Groups"], 1); type_range = write_list_to_ref("Types", OFFER_CONSTANTS["Product_Types"], 2); var_range = write_list_to_ref("Varieties", OFFER_CONSTANTS["Varieties"], 3); size_range = write_list_to_ref("Sizes", OFFER_CONSTANTS["Sizes"], 4); pack_range = write_list_to_ref("Packaging", OFFER_CONSTANTS["Packaging"], 5); curr_range = write_list_to_ref("Currencies", OFFER_CONSTANTS["Currencies"], 6); inco_range = write_list_to_ref("Incoterms", OFFER_CONSTANTS["Incoterms"], 7)
     
-    val_end = table_start_row + 1 + data_rows_count
+    val_end = table_start_row + 1 + 100
     worksheet.data_validation(table_start_row + 1, 0, val_end, 0, {'validate': 'list', 'source': cat_range})
     worksheet.data_validation(table_start_row + 1, 1, val_end, 1, {'validate': 'list', 'source': group_range})
     worksheet.data_validation(table_start_row + 1, 3, val_end, 3, {'validate': 'list', 'source': type_range})
@@ -190,7 +161,7 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
     writer.close(); output.seek(0); return output
 
 # ==========================================
-# 🔐 AUTHENTICATION PAGE
+# 🔐 AUTHENTICATION
 # ==========================================
 if not st.session_state.user:
     st.title("🌰 Avella Giriş Paneli")
@@ -221,146 +192,114 @@ if not st.session_state.user:
                 else: st.error(msg)
 
 # ==========================================
-# 🚀 MAIN APP (ROUTER LOGIC)
+# 🚀 MAIN APP - MULTI-MENU SIDEBAR
 # ==========================================
 else:
     user = st.session_state.user; role = st.session_state.role
     st.sidebar.info(f"👤 {user['email']}"); st.sidebar.caption(f"Rol: {role.upper()}")
     if st.sidebar.button("Çıkış Yap"): st.session_state.user = None; st.session_state.role = None; st.rerun()
 
-    # --- DYNAMIC ROUTING & SIDEBAR ORDERING ---
-    # We will build distinct lists for each section based on permission
-    menu_turkiye = []
-    menu_mgmt = []
-    menu_portal = []
-    
+    # --- PERMISSIONS ---
     def has_access(mod_id):
         if role == 'administrator': return True
-        allowed = user.get('allowed_modules', [])
-        return mod_id in allowed
+        return mod_id in user.get('allowed_modules', [])
 
-    # Group 1: Avella Turkiye (Turkish Ops)
-    # IDs: 1 (Sube/Fab), 3 (Uretim), 5 (Stok), 7 (Kalite)
-    if has_access(1): menu_turkiye.append(MODULE_MAP[1])
-    if has_access(3): menu_turkiye.append(MODULE_MAP[3])
-    if has_access(5): menu_turkiye.append(MODULE_MAP[5])
-    if has_access(7): menu_turkiye.append(MODULE_MAP[7])
-
-    # Group 2: Avella Management (English Admin)
-    # IDs: 4 (Admin), 6 (Offers)
+    # --- MENU LISTS ---
+    menu_tr = []; menu_mgmt = []; menu_prt = []
+    
+    # 1. Avella Turkiye
+    if has_access(1): menu_tr.append(MODULE_MAP[1])
+    if has_access(3): menu_tr.append(MODULE_MAP[3])
+    if has_access(5): menu_tr.append(MODULE_MAP[5])
+    if has_access(7): menu_tr.append(MODULE_MAP[7])
+    
+    # 2. Management
     if has_access(4): menu_mgmt.append(MODULE_MAP[4])
     if has_access(6): menu_mgmt.append(MODULE_MAP[6])
     
-    # Group 3: Partners
-    menu_portal.append(CUSTOMER_PORTAL_NAME)
+    # 3. Partners
+    menu_prt.append(CUSTOMER_PORTAL_NAME)
 
-    # ---------------------------------------------
-    # RENDER SIDEBAR SECTIONS
-    # ---------------------------------------------
+    # --- STATE MANAGEMENT FOR MENUS ---
+    # We use 3 separate radios. We need to know which one was "last clicked".
+    # Since Streamlit re-runs on click, we check if the value changed.
     
-    selected_module = None
+    # Initialize separate state variables if not exist
+    if 'menu_tr_sel' not in st.session_state: st.session_state.menu_tr_sel = None
+    if 'menu_mgmt_sel' not in st.session_state: st.session_state.menu_mgmt_sel = None
+    if 'menu_prt_sel' not in st.session_state: st.session_state.menu_prt_sel = None
+
+    # We need a robust way to enforce "One Active".
+    # Logic: We use `key` parameter. If a user clicks TR menu, `st.session_state.key_tr` updates.
+    # We detect which key changed and set `st.session_state.active_module`.
+    # Then we trick the other radios to be "None" index? Streamlit < 1.29 doesn't support index=None easily.
+    # WORKAROUND: We will use a unique layout.
     
-    # 1. TURKIYE SECTION
-    if menu_turkiye:
+    st.sidebar.markdown("---")
+    
+    # SECTION 1: TURKIYE
+    if menu_tr:
         st.sidebar.header("🇹🇷 Avella Turkiye")
-        # Use a unique key for each radio to avoid conflicts, but we need ONE source of truth.
-        # Streamlit radio buttons don't support "deselecting" easily across multiple widgets.
-        # TRICK: We use one main variable to track selection, but show visual groups?
-        # No, better approach: Use ONE radio for navigation, but visually insert headers in the list?
-        # Streamlit doesn't support headers *inside* radio options.
-        # BEST APPROACH: Use the visual grouping requested by user which implies structure.
-        
-        # Since I cannot link 3 separate radio buttons to 1 variable easily without complex callback logic,
-        # I will use the standard approach: ONE radio button, but with visual separators in the list?
-        # No, you can't insert headers in options list.
-        
-        # Fallback: Just one list, sorted logically.
-        # But user explicitly asked for "Group the modules...".
-        # So I will use 3 separate radio widgets. The user will click one.
-        # Limitation: Clicking a button in Group B won't auto-deselect Group A's visual highlight easily.
-        # WORKAROUND: I will use Buttons instead of Radio for navigation? No, looks bad.
-        # I will use ONE single radio, but I will modify the labels to include the Group Name as a prefix? No, cluttered.
-        
-        # Let's try the 3-radio approach with Session State to clear others.
-        
-        # ... Actually, for simplicity and robustness in Streamlit, a single Radio is safest.
-        # However, to satisfy "Group the modules", I will stick to the 3-radio method 
-        # and handle the state manually.
-        
-        pass 
-
-    # REVISED NAVIGATION LOGIC FOR GROUPS
-    # We check which "Section" is active in session state
-    if 'nav_section' not in st.session_state: st.session_state.nav_section = 'Turkiye'
-    
-    # If selection is made in one, we clear others? Hard.
-    # Simpler: One big list, but I will use Markdown to separate them visually if possible? No.
-    
-    # LET'S DO THIS:
-    # 1. Show all 3 sections headers.
-    # 2. Put a radio button under each.
-    # 3. If a user changes Radio A, we update Global Module and rerun.
-    
-    # To make this work, we need unique keys.
-    
-    # Define valid options for each group
-    valid_turkiye = {name: name for name in menu_turkiye}
-    valid_mgmt = {name: name for name in menu_mgmt}
-    valid_portal = {name: name for name in menu_portal}
-    
-    # Determine current selection index
-    # We need to know "Current Module" to set the default index of the correct radio button.
-    if 'current_module' not in st.session_state:
-        # Default to first available
-        if menu_turkiye: st.session_state.current_module = menu_turkiye[0]
-        elif menu_mgmt: st.session_state.current_module = menu_mgmt[0]
-        else: st.session_state.current_module = menu_portal[0]
-        
-    current_mod = st.session_state.current_module
-
-    # Helper to find index
-    def get_index(options, target):
-        try: return options.index(target)
-        except: return None
-
-    # --- RENDER SIDEBAR ---
-    
-    # GROUP 1
-    if menu_turkiye:
-        st.sidebar.markdown("---")
-        st.sidebar.subheader("🇹🇷 Avella Turkiye")
-        idx_tr = get_index(menu_turkiye, current_mod)
-        
-        # If current mod is NOT in this group, we need a way to show "No Selection" visually?
-        # Streamlit radio doesn't support "None" selected.
-        # So we only show the radio if the active module IS in this group?
-        # Or we show it, but if user clicks it, it takes over.
-        
-        # This multi-radio approach is tricky UX. 
-        # Plan B: One Radio, but list is ordered:
-        # [ "--- Avella Turkiye ---", "1. Sube", "2. Fabrika", "--- Management ---", "4. Admin" ... ]
-        # And if user selects a separator, we do nothing or revert.
-        
-        final_menu_options = []
-        if menu_turkiye:
-            final_menu_options.append("::: 🇹🇷 Avella Turkiye :::")
-            final_menu_options.extend(menu_turkiye)
-        if menu_mgmt:
-            final_menu_options.append("::: 🏢 Avella Management :::")
-            final_menu_options.extend(menu_mgmt)
-        if menu_portal:
-            final_menu_options.append("::: 🤝 Customers/Partners :::")
-            final_menu_options.extend(menu_portal)
-            
-        selection = st.sidebar.radio("Navigation", final_menu_options, label_visibility="collapsed")
-        
-        if ":::" in selection:
-            # User clicked a header, stop or revert? 
-            # We just show an info message and stop execution of module logic, keeping sidebar active.
-            st.info("Please select a module from the menu.")
-            st.stop()
+        # We find the index of active module if it is in this list
+        idx_tr = 0
+        if st.session_state.active_module in menu_tr:
+            idx_tr = menu_tr.index(st.session_state.active_module)
         else:
-            module = selection
+            # If active module is NOT here, we want to visually deselect.
+            # Standard Streamlit radio forces a selection.
+            # We will use a hack: We assume the user clicks.
+            pass
+
+        # To avoid the "Ghost Selection" issue, we will actually rely on simple buttons for Headers if radios fail us?
+        # No, let's use the single radio list, but with DISABLED separators.
+        # But Streamlit doesn't support disabled items in a list.
+        
+        # FINAL ATTEMPT AT SINGLE LIST WITH HEADERS (Visually closest)
+        # We will use a single radio, but we will prefix items with their group, and filter purely by text.
+        # But the user specifically wanted headers.
+        
+        # OKAY, I WILL USE CALLBACKS to clear other states.
+        # This requires `st.session_state` manipulation.
+        
+        def update_tr():
+            st.session_state.active_module = st.session_state.radio_tr
+        
+        # We calculate 'index' properly. If active_module is NOT in this list, we set index to 0 (default) or None if supported.
+        # Since we can't hide selection in older Streamlit, we might see multiple highlights if not careful.
+        # We will use `st.sidebar.button` for navigation instead? No, sidebar state resets.
+        
+        # LET'S USE THE PROVEN "EXPANDER" METHOD TO GROUP
+        # Expander 1: Turkiye (Radio inside)
+        # Expander 2: Management (Radio inside)
+        # This allows visual grouping and hiding.
+        
+        with st.sidebar.expander("🇹🇷 Avella Turkiye", expanded=True):
+            val_tr = st.radio("Select Module", menu_tr, key="radio_tr", label_visibility="collapsed")
+            if st.button("Go to TR Module"):
+                st.session_state.active_module = val_tr
+                st.rerun()
+
+        st.sidebar.markdown("---")
+        
+        with st.sidebar.expander("🏢 Avella Management", expanded=True):
+            if menu_mgmt:
+                val_mgmt = st.radio("Select Module", menu_mgmt, key="radio_mgmt", label_visibility="collapsed")
+                if st.button("Go to Mgmt Module"):
+                    st.session_state.active_module = val_mgmt
+                    st.rerun()
+            else:
+                st.caption("No access")
+
+        st.sidebar.markdown("---")
+        
+        with st.sidebar.expander("🤝 Customers & Partners", expanded=True):
+            val_prt = st.radio("Select Module", menu_prt, key="radio_prt", label_visibility="collapsed")
+            if st.button("Go to Portal"):
+                st.session_state.active_module = val_prt
+                st.rerun()
+
+    # Determine Module
+    module = st.session_state.active_module
 
     # ==========================
     # CUSTOMER PORTAL
@@ -423,7 +362,7 @@ else:
                     st.dataframe(df_hist[valid_cols].sort_values(by='date', ascending=False).style.format({"price_tombul": "{:.2f}", "price_cakildak": "{:.2f}", "price_levant": "{:.2f}", "rate_usd_try": "{:.4f}", "rate_eur_try": "{:.4f}"}), use_container_width=True, hide_index=True)
 
     # ==========================
-    # MODULE 1: COMBINED (Şube & Fabrika)
+    # MODULE 1: COMBINED
     # ==========================
     elif module == MODULE_MAP[1]:
         st.title("1. Satın Alma ve Giriş İşlemleri")
@@ -499,9 +438,6 @@ else:
                     c1, c2 = st.columns(2); supplier = c1.text_input("Firma"); desc = c2.text_input("Açıklama"); c3, c4 = st.columns(2); qty = c3.number_input("Miktar", 1.0); price = c4.number_input("Tutar", 0.0); 
                     if st.form_submit_button("✅ Kaydet"): insert_record("purchases", {"category": general_type, "supplier": supplier, "item_type": desc, "qty_ordered": qty, "total_value": price, "status": "Pending Arrival", "created_by": st.session_state.user['email']}); st.success("Kaydedildi!")
 
-    # ==========================
-    # MODULE 3: Üretim - Kırma
-    # ==========================
     elif module == MODULE_MAP[3]:
         st.title("Modül 3: Üretim - Kırma"); 
         try:
@@ -523,7 +459,6 @@ else:
         with tab_users:
             st.subheader("User Permissions and Approval")
             
-            # --- CREATE USER SECTION ---
             with st.expander("➕ Create New User (Manually)", expanded=False):
                 with st.form("create_user_admin"):
                     st.write("**New User Details**")
