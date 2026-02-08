@@ -17,7 +17,6 @@ if 'offer_step' not in st.session_state: st.session_state.offer_step = "menu"
 if 'offer_quality_data' not in st.session_state: st.session_state.offer_quality_data = {} 
 if 'active_quality_row' not in st.session_state: st.session_state.active_quality_row = None
 if 'generated_excel_data' not in st.session_state: st.session_state.generated_excel_data = None
-# Temp storage for building custom specs
 if 'temp_custom_params' not in st.session_state: st.session_state.temp_custom_params = {}
 
 # --- CONSTANTS ---
@@ -103,17 +102,13 @@ def get_product_specs():
     except: return []
 
 def generate_offer_excel(header_data=None, product_df=None, quality_override=None):
-    """
-    Generates the Offer Excel file dynamically.
-    Scans all rows to determine the union of all Quality Parameters used.
-    """
+    """Generates the Offer Excel file."""
     output = io.BytesIO()
     writer = pd.ExcelWriter(output, engine='xlsxwriter')
     workbook = writer.book
     worksheet = workbook.add_worksheet('Offer Sheet')
     worksheet.set_tab_color('#107C41')
 
-    # Formats
     header_format = workbook.add_format({'bold': True, 'font_size': 14, 'color': '#203764'})
     label_format = workbook.add_format({'bold': True, 'align': 'right', 'bg_color': '#f2f2f2', 'border': 1})
     input_format = workbook.add_format({'border': 1, 'bg_color': '#ffffff'})
@@ -121,14 +116,12 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
     linked_cell_format = workbook.add_format({'bg_color': '#E7E6E6', 'border': 1, 'italic': True, 'font_color': '#595959'})
     quality_header_format = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'bg_color': '#FFC000', 'font_color': 'black', 'border': 1, 'text_wrap': True})
 
-    # Header
     worksheet.write('A1', 'AVELLA OFFER SHEET', header_format)
     headers = [("Date:", "B3", header_data.get("date", "")), ("Offer No:", "D3", header_data.get("offer_no", "")), ("Validity:", "F3", header_data.get("validity", "")), ("Customer Name:", "B4", header_data.get("customer", "")), ("Cust. Ref:", "D4", header_data.get("cust_ref", "")), ("Avella Ref:", "F4", header_data.get("avella_ref", "")), ("Payment Terms:", "B5", header_data.get("payment", "")), ("Delivery Addr:", "D5", header_data.get("delivery", ""))]
     for label, cell, val in headers:
         worksheet.write(cell, label, label_format); col_letter = cell[0]; row_num = int(cell[1:]); input_cell = chr(ord(col_letter) + 1) + str(row_num); worksheet.write(input_cell, str(val), input_format)
     worksheet.merge_range('E5:G5', "", input_format)
 
-    # Product Table
     table_start_row = 8
     columns = ["Category", "Product Group", "Total Contract Volume (kg)", "Type/Process", "Variety", "Size", "Packaging", "Net Wgt (kg)", "Price", "Currency", "Incoterms", "Place of Delivery", "Minimum Order Quantity (kg)", "Shipment Schedule", "Payment Terms"]
     for i, col_name in enumerate(columns): worksheet.write(table_start_row, i, col_name, table_header_format); worksheet.set_column(i, i, 15)
@@ -145,11 +138,11 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
                 worksheet.write(row_num, col_idx, val, input_format)
         data_rows_count = max(100, len(product_df) + 10)
 
-    # --- DYNAMIC QUALITY SHEET ---
     worksheet_qual = workbook.add_worksheet('Quality Parameters'); worksheet_qual.set_tab_color('#FFC000')
+    qual_ident_cols = ["Product Group (Linked)", "Type (Linked)", "Variety (Linked)", "Size (Linked)"]
     
-    # 1. Determine Union of All Parameters used in this specific offer
-    used_params = set(DEFAULT_QUALITY_PARAMS.keys()) # Start with defaults
+    # Dynamic Union of Keys
+    used_params = set(DEFAULT_QUALITY_PARAMS.keys())
     param_row_limit = 100
     if product_df is not None:
         param_row_limit = max(100, len(product_df) + 5)
@@ -157,16 +150,11 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
             for ridx, params in quality_override.items():
                 used_params.update(params.keys())
     
-    sorted_params = sorted(list(used_params)) # Sort for consistency
-    qual_ident_cols = ["Product Group (Linked)", "Type (Linked)", "Variety (Linked)", "Size (Linked)"]
+    sorted_params = sorted(list(used_params))
     all_qual_cols = qual_ident_cols + sorted_params
 
-    # Write Headers
-    for i, col_name in enumerate(all_qual_cols): 
-        worksheet_qual.write(table_start_row, i, col_name, quality_header_format)
-        worksheet_qual.set_column(i, i, 22) 
+    for i, col_name in enumerate(all_qual_cols): worksheet_qual.write(table_start_row, i, col_name, quality_header_format); worksheet_qual.set_column(i, i, 22) 
 
-    # Write Data
     for r_idx in range(param_row_limit):
         xl_row = table_start_row + 1 + r_idx + 1
         worksheet_row = table_start_row + 1 + r_idx
@@ -175,17 +163,14 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
         worksheet_qual.write_formula(worksheet_row, 2, f"='Offer Sheet'!E{xl_row}", linked_cell_format) 
         worksheet_qual.write_formula(worksheet_row, 3, f"='Offer Sheet'!F{xl_row}", linked_cell_format) 
         
-        # Get active params for this row
-        row_params = DEFAULT_QUALITY_PARAMS.copy()
+        row_custom_data = {}
         if quality_override and r_idx in quality_override:
-            row_params.update(quality_override[r_idx]) # Override with custom/template
+            row_custom_data = quality_override[r_idx]
 
-        # Write matching columns
         for i, key in enumerate(sorted_params):
-            val = row_params.get(key, "") # If param not in this row, leave blank
+            val = row_custom_data.get(key, DEFAULT_QUALITY_PARAMS.get(key, ""))
             worksheet_qual.write(worksheet_row, 4 + i, val, input_format)
 
-    # Reference Data
     ref_sheet = workbook.add_worksheet('ReferenceData'); ref_sheet.hide()
     def write_list_to_ref(header, data_list, col_idx):
         ref_sheet.write(0, col_idx, header); [ref_sheet.write(i + 1, col_idx, item) for i, item in enumerate(data_list)]; return f"=ReferenceData!${xlsxwriter.utility.xl_col_to_name(col_idx)}$2:${xlsxwriter.utility.xl_col_to_name(col_idx)}${len(data_list) + 1}"
@@ -236,7 +221,7 @@ if not st.session_state.user:
                 else: st.error(msg)
 
 # ==========================================
-# 🚀 MAIN APP
+# 🚀 MAIN APP (ROUTER LOGIC)
 # ==========================================
 else:
     user = st.session_state.user; role = st.session_state.role
@@ -319,7 +304,7 @@ else:
                     st.dataframe(df_hist[valid_cols].sort_values(by='date', ascending=False).style.format({"price_tombul": "{:.2f}", "price_cakildak": "{:.2f}", "price_levant": "{:.2f}", "rate_usd_try": "{:.4f}", "rate_eur_try": "{:.4f}"}), use_container_width=True, hide_index=True)
 
     # ==========================
-    # MODULE 1
+    # MODULE 1-3
     # ==========================
     elif module == MODULE_MAP[1]:
         st.title("Modül 1: Şube Ürün Girişi"); hazelnut_cat = "Kabuklu Fındık"; st.info("Bu modül Şubelerden yapılan **Kabuklu Fındık** alımları içindir."); 
@@ -336,7 +321,6 @@ else:
             if reg_type != "Emanet": st.metric("Kalan Bakiye", f"{total_val - pay_amount:,.2f} TL")
             if st.form_submit_button("✅ Şube Girişini Kaydet"):
                 payload = {"created_by": st.session_state.user['email'], "status": "Pending Arrival", "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type, "id_number": id_num, "city": city, "district": dist_in, "village": vill_in, "phone_number": contact, "cert_status": cert_status, "reg_type": reg_type, "location": location, "item_type": hazelnut_type, "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num, "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount, "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag, "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv, "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over, "moisture": val_moist, "calculated_randiman": val_randiman, "gross_price_50": price_gross, "net_price_50": net_price_50, "actual_unit_price": unit_price}; insert_record("purchases", payload); st.success("Fabrika Girişi Kaydedildi!")
-
     elif module == MODULE_MAP[2]:
         st.title("Modül 2: Fabrika Ürün Girişi"); tab_findik, tab_malzeme, tab_genel = st.tabs(["🌰 Fındık Alımı", "📦 Malzeme Alımı", "⚙️ Makine & Hizmet"])
         with tab_findik:
@@ -396,17 +380,79 @@ else:
             else: st.info("Bekleyen yok.")
         except Exception as e: st.error(f"Hata: {e}")
 
+    # ==========================
+    # MODULE 4: ADMINISTRATOR
+    # ==========================
     elif module == MODULE_MAP[4]:
-        st.title("🛠️ Yönetici Ayarları"); tab_users, tab_mat, tab_logs = st.tabs(["👥 Kullanıcı Yönetimi", "📦 Malzeme Tanımları", "📜 Giriş Logları"])
+        st.title("🛠️ Yönetici Ayarları")
+        tab_users, tab_mat, tab_logs = st.tabs(["👥 Kullanıcı Yönetimi", "📦 Malzeme Tanımları", "📜 Giriş Logları"])
+        
         with tab_users:
-            st.subheader("Kullanıcı İzinleri ve Onay"); all_users = get_all_users(); df_users = pd.DataFrame(all_users)
+            st.subheader("Kullanıcı İzinleri ve Onay")
+            
+            # --- CREATE USER SECTION ---
+            with st.expander("➕ Create New User (Manually)", expanded=False):
+                with st.form("create_user_admin"):
+                    c_new_email = st.text_input("Email")
+                    c_new_pass = st.text_input("Password", type="password")
+                    c_new_role = st.selectbox("Role", ["employee", "administrator", "customer"])
+                    
+                    if st.form_submit_button("Create User"):
+                        if c_new_email and c_new_pass:
+                            success, msg = register_user(c_new_email, c_new_pass, role=c_new_role)
+                            if success:
+                                st.success(f"User Created: {c_new_email}")
+                                time.sleep(1)
+                                st.rerun()
+                            else:
+                                st.error(msg)
+                        else:
+                            st.warning("Email and Password required.")
+
+            st.markdown("---")
+            all_users = get_all_users()
+            df_users = pd.DataFrame(all_users)
+            
             if not df_users.empty:
-                st.dataframe(df_users[['email', 'role', 'is_approved', 'allowed_modules']], use_container_width=True); st.markdown("---"); user_list = {u['email']: u for u in all_users}; selected_email = st.selectbox("Kullanıcı Seç", list(user_list.keys()))
+                st.dataframe(df_users[['email', 'role', 'is_approved', 'allowed_modules']], use_container_width=True)
+                st.markdown("---")
+                user_list = {u['email']: u for u in all_users}
+                selected_email = st.selectbox("Edit Existing User", list(user_list.keys()))
+                
                 if selected_email:
                     target_user = user_list[selected_email]
                     with st.form("edit_user_perm"):
-                        st.write(f"**Seçili:** {target_user['email']}"); current_role = target_user['role']; role_options = ["customer", "employee", "administrator"]; role_idx = role_options.index(current_role) if current_role in role_options else 0; new_role = st.selectbox("Rol", role_options, index=role_idx); new_approved = st.checkbox("Onaylı Hesap", value=target_user['is_approved']); current_modules = target_user.get('allowed_modules') or []; st.caption("Erişilebilir Modüller"); c1, c2, c3, c4, c5, c6 = st.columns(6); m1 = c1.checkbox("1. Şube", 1 in current_modules); m2 = c2.checkbox("2. Fabrika", 2 in current_modules); m3 = c3.checkbox("3. Mal Kabul", 3 in current_modules); m4 = c4.checkbox("4. Yönetici", 4 in current_modules); m5 = c5.checkbox("5. Stok", 5 in current_modules); m6 = c6.checkbox("6. Teklifler", 6 in current_modules)
-                        if st.form_submit_button("💾 Yetkileri Güncelle"): new_mod_list = []; [new_mod_list.append(i) for i, m in zip([1,2,3,4,5,6], [m1,m2,m3,m4,m5,m6]) if m]; update_user_permissions(target_user['id'], new_approved, new_mod_list, new_role); st.success("Güncellendi!"); time.sleep(1); st.rerun()
+                        st.write(f"**Editing:** {target_user['email']}")
+                        current_role = target_user['role']
+                        role_options = ["customer", "employee", "administrator"]
+                        role_idx = role_options.index(current_role) if current_role in role_options else 0
+                        new_role = st.selectbox("Role", role_options, index=role_idx)
+                        new_approved = st.checkbox("Account Approved", value=target_user['is_approved'])
+                        current_modules = target_user.get('allowed_modules') or []
+                        st.caption("Access Rights")
+                        c1, c2, c3, c4, c5, c6, c7 = st.columns(7) # Added 7
+                        m1 = c1.checkbox("1. Şube", 1 in current_modules)
+                        m2 = c2.checkbox("2. Fabrika", 2 in current_modules)
+                        m3 = c3.checkbox("3. Kantar", 3 in current_modules)
+                        m4 = c4.checkbox("4. Admin", 4 in current_modules)
+                        m5 = c5.checkbox("5. Stok", 5 in current_modules)
+                        m6 = c6.checkbox("6. Offers", 6 in current_modules)
+                        m7 = c7.checkbox("7. Quality", 7 in current_modules) # New module
+                        
+                        if st.form_submit_button("💾 Update Permissions"):
+                            new_mod_list = []
+                            if m1: new_mod_list.append(1)
+                            if m2: new_mod_list.append(2)
+                            if m3: new_mod_list.append(3)
+                            if m4: new_mod_list.append(4)
+                            if m5: new_mod_list.append(5)
+                            if m6: new_mod_list.append(6)
+                            if m7: new_mod_list.append(7)
+                            update_user_permissions(target_user['id'], new_approved, new_mod_list, new_role)
+                            st.success("Updated!")
+                            time.sleep(1)
+                            st.rerun()
+
         with tab_mat:
             cats = ["Ambalaj Malzemeleri", "Bakım Malzemeleri", "Ofis Malzemeleri", "Temizlik Malzemeleri", "Eşantiyon & Hediye", "İş Kıyafetleri", "Gıda ve Mutfak", "Diğer"]; units = ['adet', 'gr', 'kg', 'bobin', 'rulo', 'paket', 'deste', 'palet', 'litre', 'mililitre', 'metreküp', 'desimetreküp', 'santimetreküp', 'metre', 'desimetre', 'santimetre', 'milimetre', 'bigbag', 'kamyon', 'tır', 'tank', 'metrekare', 'santimetrekare', 'ar', 'dekar', 'hektar']; 
             with st.expander("Listeyi Gör"): data = supabase.table("material_definitions").select("*").execute().data; st.dataframe(pd.DataFrame(data), use_container_width=True)
@@ -446,6 +492,7 @@ else:
 
     elif module == MODULE_MAP[6]:
         st.title("📄 Teklif Hazırlama (Offers)")
+        
         if st.session_state.offer_step == "menu":
             if st.button("➕ Create Offer (Yeni Teklif Oluştur)", type="primary"):
                 st.session_state.offer_step = "create"
@@ -526,24 +573,16 @@ else:
             final_options = ["(Select to Load)"] + display_keys + ["--- Other Types ---"] + other_keys
             selected_template = st.selectbox("📥 Load from Specification Template", final_options)
             
-            # Logic: If template loaded, merge keys dynamically
-            loaded_params = {}
             if selected_template and selected_template not in ["(Select to Load)", "--- Other Types ---"]:
-                loaded_params = spec_options[selected_template]
+                st.session_state.offer_quality_data[row_idx] = spec_options[selected_template]
                 st.success(f"Loaded template: {selected_template}")
             
-            # Base logic: Start with what we have in session (or defaults), then update with loaded template if any
             current_vals = st.session_state.offer_quality_data.get(row_idx, DEFAULT_QUALITY_PARAMS.copy())
-            if loaded_params:
-                current_vals = loaded_params # Full replacement on load
             
             with st.form("quality_form"):
                 cols = st.columns(4)
                 new_vals = {}
-                # Merge keys from defaults AND current values (to catch custom params from template)
                 all_keys = list(set(list(DEFAULT_QUALITY_PARAMS.keys()) + list(current_vals.keys())))
-                # Sort to keep defaults first if possible, or just alphabetic
-                # Better: Sort by known default order, then others
                 def sort_key(k):
                     if k in DEFAULT_QUALITY_PARAMS: return list(DEFAULT_QUALITY_PARAMS.keys()).index(k)
                     return 999
@@ -572,11 +611,8 @@ else:
         
         tab_create, tab_list = st.tabs(["➕ Create Specification", "📜 Specification List / Update"])
         
-        # --- TAB 1: CREATE ---
         with tab_create:
             st.markdown("### Define New Product Specification")
-            
-            # Custom Parameter Adder (Outside Form to allow interactivity)
             with st.expander("Add Custom Parameter (Optional)"):
                 c_custom1, c_custom2, c_custom3, c_custom4 = st.columns([2, 2, 2, 1])
                 new_p_name = c_custom1.text_input("Param Name")
@@ -596,7 +632,6 @@ else:
                 c1, c2 = st.columns(2)
                 spec_name = c1.text_input("Specification Name (e.g. 'Std Natural 11-13')")
                 prod_type = c2.selectbox("Associated Product Type", OFFER_CONSTANTS["Product_Types"])
-                
                 st.markdown("---")
                 st.write("**Default Quality Parameters**")
                 cols = st.columns(4)
@@ -613,35 +648,25 @@ else:
                 st.markdown("---")
                 if st.form_submit_button("💾 Save Specification"):
                     if spec_name:
-                        # 1. Check Duplicate Name
                         existing = supabase.table("product_specs").select("id").eq("spec_name", spec_name).execute()
                         if existing.data:
                             st.error("You cannot change an existing specification here. You need to do that under the Specification List Tab.")
                         else:
-                            # Merge custom params
                             final_params = spec_vals.copy()
                             final_params.update(st.session_state.temp_custom_params)
-                            
-                            payload = {
-                                "spec_name": spec_name,
-                                "product_type": prod_type,
-                                "parameters": final_params,
-                                "created_by": st.session_state.user['email']
-                            }
+                            payload = {"spec_name": spec_name, "product_type": prod_type, "parameters": final_params, "created_by": st.session_state.user['email']}
                             try:
                                 insert_record("product_specs", payload)
                                 st.success("Specification Saved!")
-                                st.session_state.temp_custom_params = {} # Reset
+                                st.session_state.temp_custom_params = {}
                             except Exception as e:
                                 st.error(f"Error: {e}")
                     else:
                         st.error("Specification Name is required.")
 
-        # --- TAB 2: LIST / UPDATE ---
         with tab_list:
             st.markdown("### Existing Specifications")
             specs = get_product_specs()
-            
             if specs:
                 df_specs = pd.DataFrame(specs)
                 st.dataframe(df_specs[["spec_name", "product_type", "created_by", "created_at"]], use_container_width=True)
@@ -654,10 +679,8 @@ else:
                 if selected_spec_name_update != "(Select)":
                     target_spec = next(s for s in specs if s["spec_name"] == selected_spec_name_update)
                     current_params = target_spec["parameters"]
-                    
                     st.info(f"Updating: **{target_spec['spec_name']}**")
                     
-                    # Allow adding custom param to existing spec
                     with st.expander("Add New Parameter to this Spec"):
                         uc1, uc2 = st.columns(2)
                         up_name = uc1.text_input("New Param Name")
@@ -665,26 +688,20 @@ else:
                         if st.button("Add to Form"):
                             if up_name:
                                 current_params[up_name] = up_val
-                                st.rerun() # Refresh to show in form below
+                                st.rerun()
 
                     with st.form("update_spec_form"):
-                        # Dynamic inputs based on saved params
                         u_cols = st.columns(4)
                         updated_vals = {}
                         u_keys = list(current_params.keys())
-                        
                         for i, k in enumerate(u_keys):
                             col = u_cols[i % 4]
                             val = current_params[k]
-                            # Try to cast to float/int for correct widget type
                             if isinstance(val, (int, float)):
                                 updated_vals[k] = col.number_input(k, value=float(val))
                             elif isinstance(val, str) and val.replace('.','',1).isdigit():
-                                # Try to convert string number to float for better UX
-                                try:
-                                    updated_vals[k] = col.number_input(k, value=float(val))
-                                except:
-                                    updated_vals[k] = col.text_input(k, value=val)
+                                try: updated_vals[k] = col.number_input(k, value=float(val))
+                                except: updated_vals[k] = col.text_input(k, value=val)
                             else:
                                 updated_vals[k] = col.text_input(k, value=str(val))
                         
