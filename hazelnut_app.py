@@ -20,25 +20,17 @@ if 'generated_excel_data' not in st.session_state: st.session_state.generated_ex
 if 'temp_custom_params' not in st.session_state: st.session_state.temp_custom_params = {}
 
 # --- CONSTANTS ---
-# Standardized Names with Numbers & Correct Language
-# Group 1: Avella Turkiye (1, 2, 3, 5, 7)
-# Group 2: Avella Management (4, 6)
 MODULE_MAP = {
-    1: "1. Şube Ürün Girişi",          # Turkish
-    2: "2. Fabrika Ürün Girişi",       # Turkish
-    3: "3. Üretim - Kırma",            # Turkish (Renamed from Mal Kabul)
-    4: "4. Administrator Settings",    # English
-    5: "5. Stok Takibi",               # Turkish
-    6: "6. Offers",                    # English
-    7: "7. Kalite Kontrol"             # Turkish
+    1: "1. Şube Ürün Girişi",
+    2: "2. Fabrika Ürün Girişi",
+    3: "3. Üretim - Kırma",
+    4: "4. Administrator Settings",
+    5: "5. Stok Takibi",
+    6: "6. Offers",
+    7: "7. Kalite Kontrol"
 }
 
-# Group 3: Partners
-CUSTOMER_PORTAL_NAME = "🌍 Avella Customer Portal" # English
-
-# Defined Groups for Sidebar Ordering
-GROUP_TURKIYE = [1, 2, 3, 5, 7]
-GROUP_MANAGEMENT = [4, 6]
+CUSTOMER_PORTAL_NAME = "🌍 Avella Customer Portal"
 
 CALIBRE_OPTIONS = [
     "Mixed Size", "21mm+", "20mm+", "19mm+", "18mm+", "17mm+", "16mm+", 
@@ -103,21 +95,18 @@ def log_login(email):
     except Exception as e: print(f"Login log error: {e}")
 
 def get_product_specs():
-    """Fetches defined product specifications from DB."""
     try:
         response = supabase.table("product_specs").select("*").execute()
         return response.data
     except: return []
 
 def generate_offer_excel(header_data=None, product_df=None, quality_override=None):
-    """Generates the Offer Excel file."""
     output = io.BytesIO()
     writer = pd.ExcelWriter(output, engine='xlsxwriter')
     workbook = writer.book
     worksheet = workbook.add_worksheet('Offer Sheet')
     worksheet.set_tab_color('#107C41')
 
-    # Formats
     header_format = workbook.add_format({'bold': True, 'font_size': 14, 'color': '#203764'})
     label_format = workbook.add_format({'bold': True, 'align': 'right', 'bg_color': '#f2f2f2', 'border': 1})
     input_format = workbook.add_format({'border': 1, 'bg_color': '#ffffff'})
@@ -125,14 +114,12 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
     linked_cell_format = workbook.add_format({'bg_color': '#E7E6E6', 'border': 1, 'italic': True, 'font_color': '#595959'})
     quality_header_format = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'bg_color': '#FFC000', 'font_color': 'black', 'border': 1, 'text_wrap': True})
 
-    # Header
     worksheet.write('A1', 'AVELLA OFFER SHEET', header_format)
     headers = [("Date:", "B3", header_data.get("date", "")), ("Offer No:", "D3", header_data.get("offer_no", "")), ("Validity:", "F3", header_data.get("validity", "")), ("Customer Name:", "B4", header_data.get("customer", "")), ("Cust. Ref:", "D4", header_data.get("cust_ref", "")), ("Avella Ref:", "F4", header_data.get("avella_ref", "")), ("Payment Terms:", "B5", header_data.get("payment", "")), ("Delivery Addr:", "D5", header_data.get("delivery", ""))]
     for label, cell, val in headers:
         worksheet.write(cell, label, label_format); col_letter = cell[0]; row_num = int(cell[1:]); input_cell = chr(ord(col_letter) + 1) + str(row_num); worksheet.write(input_cell, str(val), input_format)
     worksheet.merge_range('E5:G5', "", input_format)
 
-    # Product Table
     table_start_row = 8
     columns = ["Category", "Product Group", "Total Contract Volume (kg)", "Type/Process", "Variety", "Size", "Packaging", "Net Wgt (kg)", "Price", "Currency", "Incoterms", "Place of Delivery", "Minimum Order Quantity (kg)", "Shipment Schedule", "Payment Terms"]
     for i, col_name in enumerate(columns): worksheet.write(table_start_row, i, col_name, table_header_format); worksheet.set_column(i, i, 15)
@@ -149,17 +136,20 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
                 worksheet.write(row_num, col_idx, val, input_format)
         data_rows_count = max(100, len(product_df) + 10)
 
-    # Quality Sheet
     worksheet_qual = workbook.add_worksheet('Quality Parameters'); worksheet_qual.set_tab_color('#FFC000')
     qual_ident_cols = ["Product Group (Linked)", "Type (Linked)", "Variety (Linked)", "Size (Linked)"]
-    qual_keys = list(DEFAULT_QUALITY_PARAMS.keys())
-    all_qual_cols = qual_ident_cols + qual_keys
+    used_params = set(DEFAULT_QUALITY_PARAMS.keys())
+    param_row_limit = 100
+    if product_df is not None:
+        param_row_limit = max(100, len(product_df) + 5)
+        if quality_override:
+            for ridx, params in quality_override.items():
+                used_params.update(params.keys())
+    
+    sorted_params = sorted(list(used_params))
+    all_qual_cols = qual_ident_cols + sorted_params
 
     for i, col_name in enumerate(all_qual_cols): worksheet_qual.write(table_start_row, i, col_name, quality_header_format); worksheet_qual.set_column(i, i, 22) 
-
-    # Formulas & Values
-    param_row_limit = 100
-    if product_df is not None: param_row_limit = max(100, len(product_df) + 5)
 
     for r_idx in range(param_row_limit):
         xl_row = table_start_row + 1 + r_idx + 1
@@ -168,16 +158,13 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
         worksheet_qual.write_formula(worksheet_row, 1, f"='Offer Sheet'!D{xl_row}", linked_cell_format) 
         worksheet_qual.write_formula(worksheet_row, 2, f"='Offer Sheet'!E{xl_row}", linked_cell_format) 
         worksheet_qual.write_formula(worksheet_row, 3, f"='Offer Sheet'!F{xl_row}", linked_cell_format) 
-        
         row_custom_data = {}
         if quality_override and r_idx in quality_override:
             row_custom_data = quality_override[r_idx]
-
-        for i, key in enumerate(qual_keys):
+        for i, key in enumerate(sorted_params):
             val = row_custom_data.get(key, DEFAULT_QUALITY_PARAMS.get(key, ""))
             worksheet_qual.write(worksheet_row, 4 + i, val, input_format)
 
-    # Reference Data
     ref_sheet = workbook.add_worksheet('ReferenceData'); ref_sheet.hide()
     def write_list_to_ref(header, data_list, col_idx):
         ref_sheet.write(0, col_idx, header); [ref_sheet.write(i + 1, col_idx, item) for i, item in enumerate(data_list)]; return f"=ReferenceData!${xlsxwriter.utility.xl_col_to_name(col_idx)}$2:${xlsxwriter.utility.xl_col_to_name(col_idx)}${len(data_list) + 1}"
@@ -236,28 +223,26 @@ else:
     if st.sidebar.button("Çıkış Yap"): st.session_state.user = None; st.session_state.role = None; st.rerun()
 
     # --- DYNAMIC ROUTING & ORDERING ---
-    # Constructing the menu based on the 3 Requested Groups
     available_menu_names = []
     
-    # Check permissions helper
     def has_access(mod_id):
         if role == 'administrator': return True
         allowed = user.get('allowed_modules', [])
         return mod_id in allowed
 
-    # 1. Avella Turkiye
-    available_menu_names.append(MODULE_MAP[1]) if has_access(1) else None
-    available_menu_names.append(MODULE_MAP[2]) if has_access(2) else None
-    available_menu_names.append(MODULE_MAP[3]) if has_access(3) else None
-    available_menu_names.append(MODULE_MAP[5]) if has_access(5) else None
-    available_menu_names.append(MODULE_MAP[7]) if has_access(7) else None
+    # Group 1: Avella Turkiye
+    if has_access(1): available_menu_names.append(MODULE_MAP[1])
+    if has_access(2): available_menu_names.append(MODULE_MAP[2])
+    if has_access(3): available_menu_names.append(MODULE_MAP[3])
+    if has_access(5): available_menu_names.append(MODULE_MAP[5])
+    if has_access(7): available_menu_names.append(MODULE_MAP[7])
 
-    # 2. Avella Management
-    available_menu_names.append(MODULE_MAP[4]) if has_access(4) else None
-    available_menu_names.append(MODULE_MAP[6]) if has_access(6) else None
+    # Group 2: Avella Management
+    if has_access(4): available_menu_names.append(MODULE_MAP[4])
+    if has_access(6): available_menu_names.append(MODULE_MAP[6])
     
-    # 3. Partners
-    available_menu_names.append(CUSTOMER_PORTAL_NAME) # Everyone has portal
+    # Group 3: Partners
+    available_menu_names.append(CUSTOMER_PORTAL_NAME)
 
     if not available_menu_names: st.error("🚫 Yetkili olduğunuz modül bulunmamaktadır."); st.stop()
     module = st.sidebar.radio("Menü", available_menu_names)
@@ -388,9 +373,6 @@ else:
                 c1, c2 = st.columns(2); supplier = c1.text_input("Firma"); desc = c2.text_input("Açıklama"); c3, c4 = st.columns(2); qty = c3.number_input("Miktar", 1.0); price = c4.number_input("Tutar", 0.0); 
                 if st.form_submit_button("✅ Kaydet"): insert_record("purchases", {"category": general_type, "supplier": supplier, "item_type": desc, "qty_ordered": qty, "total_value": price, "status": "Pending Arrival", "created_by": st.session_state.user['email']}); st.success("Kaydedildi!")
 
-    # ==========================
-    # MODULE 3: Üretim - Kırma (Turkish)
-    # ==========================
     elif module == MODULE_MAP[3]:
         st.title("Modül 3: Üretim - Kırma"); 
         try:
@@ -515,17 +497,11 @@ else:
                 else: st.info("Henüz kayıt bulunmamaktadır.")
             except Exception as e: st.error(f"Loglar yüklenirken hata oluştu: {e}")
 
-    # ==========================
-    # MODULE 5: Stok Takibi (Turkish)
-    # ==========================
     elif module == MODULE_MAP[5]:
         st.title("📦 Stok Takibi"); moves = supabase.table("stock_movements").select("*").execute().data; df = pd.DataFrame(moves)
         if not df.empty: stock = df.groupby('item_name')['quantity'].sum().reset_index(); st.dataframe(stock, use_container_width=True); st.markdown("---"); st.dataframe(df.sort_values(by='created_at', ascending=False))
         else: st.info("Hareket yok.")
 
-    # ==========================
-    # MODULE 6: Offers (English)
-    # ==========================
     elif module == MODULE_MAP[6]:
         st.title("📄 Offers")
         
