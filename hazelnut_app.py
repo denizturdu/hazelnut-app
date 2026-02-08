@@ -16,7 +16,7 @@ if 'role' not in st.session_state: st.session_state.role = None
 if 'offer_step' not in st.session_state: st.session_state.offer_step = "menu"
 if 'offer_quality_data' not in st.session_state: st.session_state.offer_quality_data = {} 
 if 'active_quality_row' not in st.session_state: st.session_state.active_quality_row = None
-if 'generated_excel_data' not in st.session_state: st.session_state.generated_excel_data = None # Store generated file
+if 'generated_excel_data' not in st.session_state: st.session_state.generated_excel_data = None
 
 # --- CONSTANTS ---
 MODULE_MAP = {
@@ -93,7 +93,7 @@ def log_login(email):
     except Exception as e: print(f"Login log error: {e}")
 
 def generate_offer_excel(header_data=None, product_df=None, quality_override=None):
-    """Generates the Offer Excel file with custom quality params support."""
+    """Generates the Offer Excel file."""
     output = io.BytesIO()
     writer = pd.ExcelWriter(output, engine='xlsxwriter')
     workbook = writer.book
@@ -108,14 +108,14 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
     linked_cell_format = workbook.add_format({'bg_color': '#E7E6E6', 'border': 1, 'italic': True, 'font_color': '#595959'})
     quality_header_format = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'bg_color': '#FFC000', 'font_color': 'black', 'border': 1, 'text_wrap': True})
 
-    # --- Header Section ---
+    # Header
     worksheet.write('A1', 'AVELLA OFFER SHEET', header_format)
     headers = [("Date:", "B3", header_data.get("date", "")), ("Offer No:", "D3", header_data.get("offer_no", "")), ("Validity:", "F3", header_data.get("validity", "")), ("Customer Name:", "B4", header_data.get("customer", "")), ("Cust. Ref:", "D4", header_data.get("cust_ref", "")), ("Avella Ref:", "F4", header_data.get("avella_ref", "")), ("Payment Terms:", "B5", header_data.get("payment", "")), ("Delivery Addr:", "D5", header_data.get("delivery", ""))]
     for label, cell, val in headers:
         worksheet.write(cell, label, label_format); col_letter = cell[0]; row_num = int(cell[1:]); input_cell = chr(ord(col_letter) + 1) + str(row_num); worksheet.write(input_cell, str(val), input_format)
     worksheet.merge_range('E5:G5', "", input_format)
 
-    # --- Product Table ---
+    # Product Table
     table_start_row = 8
     columns = ["Category", "Product Group", "Total Contract Volume (kg)", "Type/Process", "Variety", "Size", "Packaging", "Net Wgt (kg)", "Price", "Currency", "Incoterms", "Place of Delivery", "Minimum Order Quantity (kg)", "Shipment Schedule", "Payment Terms"]
     for i, col_name in enumerate(columns): worksheet.write(table_start_row, i, col_name, table_header_format); worksheet.set_column(i, i, 15)
@@ -124,13 +124,17 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
 
     data_rows_count = 100
     if product_df is not None and not product_df.empty:
-        clean_df = product_df[[c for c in product_df.columns if c in columns]].copy()
-        for idx, row in clean_df.iterrows():
+        # Filter only valid columns to write to Excel (skip 'Edit' column)
+        valid_cols = [c for c in columns if c in product_df.columns] # Only write existing cols
+        # We need to map dataframe row values to the correct Excel columns
+        for idx, row in product_df.iterrows():
             row_num = table_start_row + 1 + idx
-            for col_idx, col_name in enumerate(columns): worksheet.write(row_num, col_idx, row.get(col_name, ""), input_format)
+            for col_idx, col_name in enumerate(columns):
+                val = row.get(col_name, "")
+                worksheet.write(row_num, col_idx, val, input_format)
         data_rows_count = max(100, len(product_df) + 10)
 
-    # --- Quality Parameters Sheet ---
+    # Quality Sheet
     worksheet_qual = workbook.add_worksheet('Quality Parameters'); worksheet_qual.set_tab_color('#FFC000')
     qual_ident_cols = ["Product Group (Linked)", "Type (Linked)", "Variety (Linked)", "Size (Linked)"]
     qual_keys = list(DEFAULT_QUALITY_PARAMS.keys())
@@ -138,31 +142,27 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
 
     for i, col_name in enumerate(all_qual_cols): worksheet_qual.write(table_start_row, i, col_name, quality_header_format); worksheet_qual.set_column(i, i, 22) 
 
-    # Write Data/Formulas
+    # Formulas & Values
     param_row_limit = 100
     if product_df is not None: param_row_limit = max(100, len(product_df) + 5)
 
     for r_idx in range(param_row_limit):
-        xl_row = table_start_row + 1 + r_idx + 1 # 1-based index for formula
+        xl_row = table_start_row + 1 + r_idx + 1
         worksheet_row = table_start_row + 1 + r_idx
-        
-        # Identity Columns (Linked)
         worksheet_qual.write_formula(worksheet_row, 0, f"='Offer Sheet'!B{xl_row}", linked_cell_format) 
         worksheet_qual.write_formula(worksheet_row, 1, f"='Offer Sheet'!D{xl_row}", linked_cell_format) 
         worksheet_qual.write_formula(worksheet_row, 2, f"='Offer Sheet'!E{xl_row}", linked_cell_format) 
         worksheet_qual.write_formula(worksheet_row, 3, f"='Offer Sheet'!F{xl_row}", linked_cell_format) 
         
-        # Check if this row index has custom quality data
         row_custom_data = {}
         if quality_override and r_idx in quality_override:
             row_custom_data = quality_override[r_idx]
 
-        # Write params
         for i, key in enumerate(qual_keys):
             val = row_custom_data.get(key, DEFAULT_QUALITY_PARAMS[key])
             worksheet_qual.write(worksheet_row, 4 + i, val, input_format)
 
-    # --- Reference Data ---
+    # Reference Data
     ref_sheet = workbook.add_worksheet('ReferenceData'); ref_sheet.hide()
     def write_list_to_ref(header, data_list, col_idx):
         ref_sheet.write(0, col_idx, header); [ref_sheet.write(i + 1, col_idx, item) for i, item in enumerate(data_list)]; return f"=ReferenceData!${xlsxwriter.utility.xl_col_to_name(col_idx)}$2:${xlsxwriter.utility.xl_col_to_name(col_idx)}${len(data_list) + 1}"
@@ -326,13 +326,15 @@ else:
 
             st.markdown("---")
             
-            # Init DF WITHOUT CHECKBOXES, Just Data
+            # Init DF with 'Edit' column
             if 'offer_rows' not in st.session_state:
                 st.session_state.offer_rows = pd.DataFrame(
-                    [{"Category": "Nuts", "Product Group": "Hazelnuts", "Total Contract Volume (kg)": 0, "Type/Process": "Natural Kernels - Whole", "Variety": "Levant", "Size": "11-13mm", "Packaging": "Bigbag", "Net Wgt (kg)": 1000, "Price": 0.0, "Currency": "USD", "Incoterms": "FCA", "Place of Delivery": "Istanbul", "Minimum Order Quantity (kg)": 1000, "Shipment Schedule": "Prompt", "Payment Terms": "CAD"}],
+                    [{"⚙️ Edit Details": False, "Category": "Nuts", "Product Group": "Hazelnuts", "Total Contract Volume (kg)": 0, "Type/Process": "Natural Kernels - Whole", "Variety": "Levant", "Size": "11-13mm", "Packaging": "Bigbag", "Net Wgt (kg)": 1000, "Price": 0.0, "Currency": "USD", "Incoterms": "FCA", "Place of Delivery": "Istanbul", "Minimum Order Quantity (kg)": 1000, "Shipment Schedule": "Prompt", "Payment Terms": "CAD"}],
                 )
 
+            # Define Config
             column_config = {
+                "⚙️ Edit Details": st.column_config.CheckboxColumn("⚙️ Edit Details", help="Click to Edit Quality", default=False),
                 "Category": st.column_config.SelectboxColumn("Category", options=OFFER_CONSTANTS["Categories"], required=True),
                 "Product Group": st.column_config.SelectboxColumn("Group", options=OFFER_CONSTANTS["Product_Groups"], required=True),
                 "Type/Process": st.column_config.SelectboxColumn("Type", options=OFFER_CONSTANTS["Product_Types"], required=True, width="medium"),
@@ -346,59 +348,32 @@ else:
                 "Price": st.column_config.NumberColumn("Price", min_value=0.0, format="%.2f"),
             }
 
-            # Enable selection
-            edited_df_event = st.data_editor(
+            # Standard Data Editor (Works on all versions)
+            edited_df = st.data_editor(
                 st.session_state.offer_rows,
                 column_config=column_config,
                 num_rows="dynamic",
                 use_container_width=True,
-                key="offer_editor",
-                on_change=None, # We use simple rerun if needed, but here selection is the key
-                selection_mode="single-row" # ENABLE ROW SELECTION
+                key="offer_editor"
             )
             
-            # The data editor returns the dataframe, but we need selection state from the event object if we used `on_select`
-            # Actually, standard data_editor returns just DF. We need `on_select` logic.
-            # Correction: In new Streamlit, `st.data_editor` returns specific structure OR we use `on_select` callback. 
-            # Simplest way: use the `on_select` parameter to get selection state.
-            
-            # Wait, `st.data_editor` return value IS the edited dataframe.
-            # To get selection, we check session state if we bind it?
-            # Actually, standard usage for selection is:
-            # event = st.dataframe(..., on_select="rerun")
-            # For `data_editor`, it works similarly.
-            
-            # Since I cannot use `event = ...` assignment because `data_editor` returns the DATA, not an event object like `st.dataframe` does (in some versions).
-            # WAIT: As of Streamlit 1.35, `st.data_editor` DOES support `on_select`. 
-            # But it returns the *edited data*. The selection is available via `st.session_state[key]["selection"]["rows"]`.
-            
-            # Let's save the data back
-            st.session_state.offer_rows = edited_df_event
-
-            # Check Selection
-            selected_rows = []
-            if "offer_editor" in st.session_state and "selection" in st.session_state.offer_editor:
-                selected_rows = st.session_state.offer_editor["selection"]["rows"]
-
-            if selected_rows:
-                row_idx = selected_rows[0]
-                st.info(f"Row {row_idx + 1} Selected.")
-                if st.button("✏️ Edit Quality for Selected Product (Seçili Ürün Kalite Ayarları)", type="secondary"):
-                    st.session_state.active_quality_row = row_idx
-                    st.session_state.offer_step = "edit_quality"
-                    st.rerun()
+            # Check for Toggle Click
+            rows_to_edit = edited_df.index[edited_df["⚙️ Edit Details"]].tolist()
+            if rows_to_edit:
+                target_idx = rows_to_edit[0]
+                # Reset instantly to act as button
+                edited_df.at[target_idx, "⚙️ Edit Details"] = False
+                st.session_state.offer_rows = edited_df
+                st.session_state.active_quality_row = target_idx
+                st.session_state.offer_step = "edit_quality"
+                st.rerun()
             else:
-                st.caption("Click a row number to enable Quality Editing.")
+                # Just save the data if no special action
+                st.session_state.offer_rows = edited_df
 
             st.markdown("---")
             if st.button("Prepare & Export Offer (Teklifi Hazırla)", type="primary"):
-                # Prepare Data in Memory
-                header_payload = {
-                    "date": date_val, "offer_no": offer_no, "validity": validity,
-                    "customer": customer, "cust_ref": cust_ref, "avella_ref": avella_ref,
-                    "payment": payment, "delivery": delivery
-                }
-                
+                header_payload = {"date": date_val, "offer_no": offer_no, "validity": validity, "customer": customer, "cust_ref": cust_ref, "avella_ref": avella_ref, "payment": payment, "delivery": delivery}
                 with st.spinner("Generating Excel..."):
                     excel_data = generate_offer_excel(
                         header_data=header_payload, 
@@ -406,9 +381,8 @@ else:
                         quality_override=st.session_state.offer_quality_data
                     )
                     st.session_state.generated_excel_data = excel_data
-                    st.success("Offer Generated! Click Download below.")
+                    st.success("Offer Generated!")
             
-            # Show Download Button ONLY if file exists
             if st.session_state.generated_excel_data:
                 st.download_button(
                     label="📥 Download Excel File",
@@ -420,32 +394,25 @@ else:
         # --- EDIT QUALITY STATE ---
         elif st.session_state.offer_step == "edit_quality":
             row_idx = st.session_state.active_quality_row
-            # Safety check
             if row_idx is None or row_idx >= len(st.session_state.offer_rows):
-                st.session_state.offer_step = "create"
-                st.rerun()
+                st.session_state.offer_step = "create"; st.rerun()
 
             row_data = st.session_state.offer_rows.iloc[row_idx]
             
             st.warning(f"🔧 Editing Quality Parameters for Row #{row_idx + 1}")
             st.write(f"**Product:** {row_data['Product Group']} | {row_data['Type/Process']} | {row_data['Variety']} | {row_data['Size']}")
             
-            # Load existing or defaults
             current_vals = st.session_state.offer_quality_data.get(row_idx, DEFAULT_QUALITY_PARAMS.copy())
             
-            # Dynamic Form
             with st.form("quality_form"):
                 cols = st.columns(4)
                 new_vals = {}
                 keys = list(DEFAULT_QUALITY_PARAMS.keys())
-                
                 for i, k in enumerate(keys):
                     col = cols[i % 4]
                     default_val = current_vals.get(k, "")
-                    if isinstance(default_val, (int, float)):
-                        new_vals[k] = col.number_input(k, value=float(default_val))
-                    else:
-                        new_vals[k] = col.text_input(k, value=str(default_val))
+                    if isinstance(default_val, (int, float)): new_vals[k] = col.number_input(k, value=float(default_val))
+                    else: new_vals[k] = col.text_input(k, value=str(default_val))
                 
                 st.markdown("---")
                 if st.form_submit_button("✅ Save Parameters & Return"):
@@ -453,7 +420,7 @@ else:
                     st.session_state.offer_step = "create"
                     st.rerun()
 
-    # EXISTING MODULES 1-5 (Keeping condensed for brevity as no changes requested there)
+    # EXISTING MODULES 1-5 (Keeping condensed for brevity)
     elif module == MODULE_MAP[1]:
         st.title("Modül 1: Şube Ürün Girişi"); hazelnut_cat = "Kabuklu Fındık"; st.info("Bu modül Şubelerden yapılan **Kabuklu Fındık** alımları içindir."); 
         with st.form("sube_hazelnut_form"):
