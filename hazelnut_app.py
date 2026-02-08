@@ -13,7 +13,9 @@ st.set_page_config(page_title="Fındık Fabrikası Yönetimi", layout="wide")
 # --- SESSION STATE SETUP ---
 if 'user' not in st.session_state: st.session_state.user = None
 if 'role' not in st.session_state: st.session_state.role = None
-if 'offer_step' not in st.session_state: st.session_state.offer_step = "menu" # controls offer UI state
+if 'offer_step' not in st.session_state: st.session_state.offer_step = "menu"
+if 'offer_quality_data' not in st.session_state: st.session_state.offer_quality_data = {} # Stores custom quality params by row index
+if 'active_quality_row' not in st.session_state: st.session_state.active_quality_row = None
 
 # --- CONSTANTS ---
 MODULE_MAP = {
@@ -37,7 +39,7 @@ CALIBRE_OPTIONS = [
     "30μ", "31μ", "32μ", "33μ", "34μ", "35μ"
 ]
 
-# --- OFFER MASTER DATA (Global Scope for UI & Excel) ---
+# --- OFFER MASTER DATA ---
 OFFER_CONSTANTS = {
     "Categories": ["Nuts", "Dried Fruit", "Oil", "Chocolate"],
     "Product_Groups": ["Hazelnuts", "Walnuts", "Pistachios", "Almonds", "Peanuts", "Cashew Nuts", "Brazil Nuts", "Pine Nuts", "Macadamia Nuts", "Pecan Nuts", "Apricots", "Raisins", "Figs", "Plums", "Hazelnut Oil", "Olive Oil", "Hazelnut Cream", "Hazelnut Crunch", "Pistachio Cream", "Pistachio Crunch"],
@@ -49,59 +51,49 @@ OFFER_CONSTANTS = {
     "Incoterms": ["EXW", "FCA", "CPT", "CIP", "DAP", "DPU", "DDP", "FAS", "FOB", "CFR", "CIF"]
 }
 
+DEFAULT_QUALITY_PARAMS = {
+    "Target Humidity %": "", "Maximum FFA %": 1, "Maximum Peroxide": 1, "Maximum Oversize %": 5,
+    "Maximum Undersize %": 5, "Maximum Visible Rotten %": 2, "Maximum Hidden Rotten %": 2.5,
+    "Maximum Visible Mouldy %": 0.5, "Maximum Hidden Mouldy %": 0.5, "Maximum Visible Tumorous %": 5,
+    "Maximum Hidden Tumorous %": 5, "Maximum Insect Damaged %": 0, "Maximum Twin Kernels %": 2,
+    "Maximum Mech. Damaged %": 8, "Maximum Broken %": 4, "Maximum Rancid %": 1,
+    "Maximum Shrivelled %": 2.5, "Maximum Other Types %": 10, "Maximum Shell Pieces": "0.01%",
+    "Maximum Foreign Matter": 0
+}
+
 # --- HELPER FUNCTIONS ---
 def calculate_randiman(sample_w, good, shriv):
     if sample_w == 0: return 0.0
     return ((good + (shriv / 2)) / sample_w) * 100
 
-def calculate_percentages(base_w, inputs):
-    results = {}
-    if base_w == 0: return {k: 0.0 for k in inputs}
-    for k, v in inputs.items(): results[k] = (v / base_w) * 100
-    return results
-
 def get_market_prices():
-    """Fetch ALL market prices."""
     try:
         response = supabase.table("market_prices").select("*").order("date", desc=False).limit(3000).execute()
         df = pd.DataFrame(response.data)
-        if not df.empty:
-            df['date'] = pd.to_datetime(df['date'])
+        if not df.empty: df['date'] = pd.to_datetime(df['date'])
         return df
-    except:
-        return pd.DataFrame()
+    except: return pd.DataFrame()
 
 def get_live_rates():
-    """Fetches live USD/TRY and EUR/TRY rates from a public API."""
     rates = {"USD": 34.50, "EUR": 37.20} 
     try:
-        url = "https://open.er-api.com/v6/latest/TRY"
-        resp = requests.get(url, timeout=2)
+        url = "https://open.er-api.com/v6/latest/TRY"; resp = requests.get(url, timeout=2)
         if resp.status_code == 200:
             data = resp.json()
             if "rates" in data:
-                usd_val = data["rates"].get("USD")
-                eur_val = data["rates"].get("EUR")
-                if usd_val: rates["USD"] = 1 / usd_val
-                if eur_val: rates["EUR"] = 1 / eur_val
-    except:
-        pass
+                usd = data["rates"].get("USD"); eur = data["rates"].get("EUR")
+                if usd: rates["USD"] = 1 / usd
+                if eur: rates["EUR"] = 1 / eur
+    except: pass
     return rates
 
 def log_login(email):
-    """Inserts a record into the login_logs table."""
-    try:
-        supabase.table("login_logs").insert({"email": email}).execute()
-    except Exception as e:
-        print(f"Login log error: {e}")
+    try: supabase.table("login_logs").insert({"email": email}).execute()
+    except Exception as e: print(f"Login log error: {e}")
 
-def generate_offer_excel(header_data=None, product_df=None):
-    """
-    Generates the Offer Excel file.
-    If header_data and product_df are provided, populates the values.
-    """
+def generate_offer_excel(header_data=None, product_df=None, quality_override=None):
+    """Generates the Offer Excel file with custom quality params support."""
     output = io.BytesIO()
-    
     writer = pd.ExcelWriter(output, engine='xlsxwriter')
     workbook = writer.book
     worksheet = workbook.add_worksheet('Offer Sheet')
@@ -117,105 +109,78 @@ def generate_offer_excel(header_data=None, product_df=None):
 
     # --- Header Section ---
     worksheet.write('A1', 'AVELLA OFFER SHEET', header_format)
-    
-    # Header Mapping: Label -> Cell, Value from dict
-    headers = [
-        ("Date:", "B3", header_data.get("date", "") if header_data else ""),
-        ("Offer No:", "D3", header_data.get("offer_no", "") if header_data else ""),
-        ("Validity:", "F3", header_data.get("validity", "") if header_data else ""),
-        ("Customer Name:", "B4", header_data.get("customer", "") if header_data else ""),
-        ("Cust. Ref:", "D4", header_data.get("cust_ref", "") if header_data else ""),
-        ("Avella Ref:", "F4", header_data.get("avella_ref", "") if header_data else ""),
-        ("Payment Terms:", "B5", header_data.get("payment", "") if header_data else ""),
-        ("Delivery Addr:", "D5", header_data.get("delivery", "") if header_data else "")
-    ]
-
+    headers = [("Date:", "B3", header_data.get("date", "")), ("Offer No:", "D3", header_data.get("offer_no", "")), ("Validity:", "F3", header_data.get("validity", "")), ("Customer Name:", "B4", header_data.get("customer", "")), ("Cust. Ref:", "D4", header_data.get("cust_ref", "")), ("Avella Ref:", "F4", header_data.get("avella_ref", "")), ("Payment Terms:", "B5", header_data.get("payment", "")), ("Delivery Addr:", "D5", header_data.get("delivery", ""))]
     for label, cell, val in headers:
-        worksheet.write(cell, label, label_format)
-        col_letter = cell[0]
-        row_num = int(cell[1:])
-        input_cell = chr(ord(col_letter) + 1) + str(row_num)
-        worksheet.write(input_cell, str(val), input_format) # Write Value here
-    
-    worksheet.merge_range('E5:G5', "", input_format) # Merge for Delivery Address overflow if needed
+        worksheet.write(cell, label, label_format); col_letter = cell[0]; row_num = int(cell[1:]); input_cell = chr(ord(col_letter) + 1) + str(row_num); worksheet.write(input_cell, str(val), input_format)
+    worksheet.merge_range('E5:G5', "", input_format)
 
     # --- Product Table ---
     table_start_row = 8
     columns = ["Category", "Product Group", "Total Contract Volume (kg)", "Type/Process", "Variety", "Size", "Packaging", "Net Wgt (kg)", "Price", "Currency", "Incoterms", "Place of Delivery", "Minimum Order Quantity (kg)", "Shipment Schedule", "Payment Terms"]
+    for i, col_name in enumerate(columns): worksheet.write(table_start_row, i, col_name, table_header_format); worksheet.set_column(i, i, 15)
     
-    for i, col_name in enumerate(columns):
-        worksheet.write(table_start_row, i, col_name, table_header_format)
-        worksheet.set_column(i, i, 15)
-    
-    # Adjust widths
-    worksheet.set_column('B:B', 20); worksheet.set_column('C:C', 20); worksheet.set_column('D:D', 25)
-    worksheet.set_column('E:E', 20); worksheet.set_column('G:G', 25); worksheet.set_column('L:L', 20)
-    worksheet.set_column('M:M', 25); worksheet.set_column('N:N', 20); worksheet.set_column('O:O', 20)
+    worksheet.set_column('B:B', 20); worksheet.set_column('C:C', 20); worksheet.set_column('D:D', 25); worksheet.set_column('E:E', 20); worksheet.set_column('G:G', 25); worksheet.set_column('L:L', 20); worksheet.set_column('M:M', 25); worksheet.set_column('N:N', 20); worksheet.set_column('O:O', 20)
 
-    # --- Populate Product Data if available ---
-    data_rows_count = 100 # Default valid rows
+    data_rows_count = 100
     if product_df is not None and not product_df.empty:
-        # Map dataframe columns to Excel columns order
-        # Note: product_df cols must match the columns list order or we map manually
-        for idx, row in product_df.iterrows():
+        # Exclude internal columns like "Edit Quality"
+        clean_df = product_df[[c for c in product_df.columns if c in columns]].copy()
+        for idx, row in clean_df.iterrows():
             row_num = table_start_row + 1 + idx
-            for col_idx, col_name in enumerate(columns):
-                val = row.get(col_name, "")
-                worksheet.write(row_num, col_idx, val, input_format)
-        data_rows_count = max(100, len(product_df) + 10) # Ensure validation covers all data
+            for col_idx, col_name in enumerate(columns): worksheet.write(row_num, col_idx, row.get(col_name, ""), input_format)
+        data_rows_count = max(100, len(product_df) + 10)
 
     # --- Quality Parameters Sheet ---
-    worksheet_qual = workbook.add_worksheet('Quality Parameters')
-    worksheet_qual.set_tab_color('#FFC000')
+    worksheet_qual = workbook.add_worksheet('Quality Parameters'); worksheet_qual.set_tab_color('#FFC000')
     qual_ident_cols = ["Product Group (Linked)", "Type (Linked)", "Variety (Linked)", "Size (Linked)"]
-    qual_param_cols = ["Target Humidity %", "Maximum FFA %", "Maximum Peroxide", "Maximum Oversize %", "Maximum Undersize %", "Maximum Visible Rotten %", "Maximum Hidden Rotten %", "Maximum Visible Mouldy %", "Maximum Hidden Mouldy %", "Maximum Visible Tumorous %", "Maximum Hidden Tumorous %", "Maximum Insect Damaged %", "Maximum Twin Kernels %", "Maximum Mech. Damaged %", "Maximum Broken %", "Maximum Rancid %", "Maximum Shrivelled %", "Maximum Other Types %", "Maximum Shell Pieces", "Maximum Foreign Matter"]
-    default_qual_values = ["", 1, 1, 5, 5, 2, 2.5, 0.5, 0.5, 5, 5, 0, 2, 8, 4, 1, 2.5, 10, "0.01%", 0]
-    all_qual_cols = qual_ident_cols + qual_param_cols
+    qual_keys = list(DEFAULT_QUALITY_PARAMS.keys())
+    all_qual_cols = qual_ident_cols + qual_keys
 
-    for i, col_name in enumerate(all_qual_cols):
-        worksheet_qual.write(table_start_row, i, col_name, quality_header_format)
-        worksheet_qual.set_column(i, i, 22) 
+    for i, col_name in enumerate(all_qual_cols): worksheet_qual.write(table_start_row, i, col_name, quality_header_format); worksheet_qual.set_column(i, i, 22) 
 
-    # Write Formulas
-    for r in range(table_start_row + 1, table_start_row + 1 + data_rows_count):
-        xl_row = r + 1
-        worksheet_qual.write_formula(r, 0, f"='Offer Sheet'!B{xl_row}", linked_cell_format) 
-        worksheet_qual.write_formula(r, 1, f"='Offer Sheet'!D{xl_row}", linked_cell_format) 
-        worksheet_qual.write_formula(r, 2, f"='Offer Sheet'!E{xl_row}", linked_cell_format) 
-        worksheet_qual.write_formula(r, 3, f"='Offer Sheet'!F{xl_row}", linked_cell_format) 
-        for i, val in enumerate(default_qual_values):
-            worksheet_qual.write(r, 4 + i, val, input_format)
+    # Write Data/Formulas
+    # If product_df exists, we need to iterate through it to check for overrides
+    param_row_limit = 100
+    if product_df is not None: param_row_limit = max(100, len(product_df) + 5)
 
-    # --- Reference Data & Validation ---
+    for r_idx in range(param_row_limit):
+        xl_row = table_start_row + 1 + r_idx + 1 # 1-based index for formula
+        worksheet_row = table_start_row + 1 + r_idx
+        
+        # Identity Columns (Linked)
+        worksheet_qual.write_formula(worksheet_row, 0, f"='Offer Sheet'!B{xl_row}", linked_cell_format) 
+        worksheet_qual.write_formula(worksheet_row, 1, f"='Offer Sheet'!D{xl_row}", linked_cell_format) 
+        worksheet_qual.write_formula(worksheet_row, 2, f"='Offer Sheet'!E{xl_row}", linked_cell_format) 
+        worksheet_qual.write_formula(worksheet_row, 3, f"='Offer Sheet'!F{xl_row}", linked_cell_format) 
+        
+        # Check if this row index has custom quality data
+        row_custom_data = {}
+        if quality_override and r_idx in quality_override:
+            row_custom_data = quality_override[r_idx]
+
+        # Write params
+        for i, key in enumerate(qual_keys):
+            val = row_custom_data.get(key, DEFAULT_QUALITY_PARAMS[key])
+            worksheet_qual.write(worksheet_row, 4 + i, val, input_format)
+
+    # --- Reference Data ---
     ref_sheet = workbook.add_worksheet('ReferenceData'); ref_sheet.hide()
     def write_list_to_ref(header, data_list, col_idx):
-        ref_sheet.write(0, col_idx, header)
-        for i, item in enumerate(data_list): ref_sheet.write(i + 1, col_idx, item)
-        return f"=ReferenceData!${xlsxwriter.utility.xl_col_to_name(col_idx)}$2:${xlsxwriter.utility.xl_col_to_name(col_idx)}${len(data_list) + 1}"
+        ref_sheet.write(0, col_idx, header); [ref_sheet.write(i + 1, col_idx, item) for i, item in enumerate(data_list)]; return f"=ReferenceData!${xlsxwriter.utility.xl_col_to_name(col_idx)}$2:${xlsxwriter.utility.xl_col_to_name(col_idx)}${len(data_list) + 1}"
+    
+    cat_range = write_list_to_ref("Categories", OFFER_CONSTANTS["Categories"], 0); group_range = write_list_to_ref("Groups", OFFER_CONSTANTS["Product_Groups"], 1); type_range = write_list_to_ref("Types", OFFER_CONSTANTS["Product_Types"], 2); var_range = write_list_to_ref("Varieties", OFFER_CONSTANTS["Varieties"], 3); size_range = write_list_to_ref("Sizes", OFFER_CONSTANTS["Sizes"], 4); pack_range = write_list_to_ref("Packaging", OFFER_CONSTANTS["Packaging"], 5); curr_range = write_list_to_ref("Currencies", OFFER_CONSTANTS["Currencies"], 6); inco_range = write_list_to_ref("Incoterms", OFFER_CONSTANTS["Incoterms"], 7)
+    
+    val_end = table_start_row + 1 + data_rows_count
+    worksheet.data_validation(table_start_row + 1, 0, val_end, 0, {'validate': 'list', 'source': cat_range})
+    worksheet.data_validation(table_start_row + 1, 1, val_end, 1, {'validate': 'list', 'source': group_range})
+    worksheet.data_validation(table_start_row + 1, 3, val_end, 3, {'validate': 'list', 'source': type_range})
+    worksheet.data_validation(table_start_row + 1, 4, val_end, 4, {'validate': 'list', 'source': var_range})
+    worksheet.data_validation(table_start_row + 1, 5, val_end, 5, {'validate': 'list', 'source': size_range})
+    worksheet.data_validation(table_start_row + 1, 6, val_end, 6, {'validate': 'list', 'source': pack_range})
+    worksheet.data_validation(table_start_row + 1, 9, val_end, 9, {'validate': 'list', 'source': curr_range})
+    worksheet.data_validation(table_start_row + 1, 10, val_end, 10, {'validate': 'list', 'source': inco_range})
 
-    cat_range = write_list_to_ref("Categories", OFFER_CONSTANTS["Categories"], 0)
-    group_range = write_list_to_ref("Groups", OFFER_CONSTANTS["Product_Groups"], 1)
-    type_range = write_list_to_ref("Types", OFFER_CONSTANTS["Product_Types"], 2)
-    var_range = write_list_to_ref("Varieties", OFFER_CONSTANTS["Varieties"], 3)
-    size_range = write_list_to_ref("Sizes", OFFER_CONSTANTS["Sizes"], 4)
-    pack_range = write_list_to_ref("Packaging", OFFER_CONSTANTS["Packaging"], 5)
-    curr_range = write_list_to_ref("Currencies", OFFER_CONSTANTS["Currencies"], 6)
-    inco_range = write_list_to_ref("Incoterms", OFFER_CONSTANTS["Incoterms"], 7)
-
-    # Apply validation to the whole range
-    val_range_end = table_start_row + 1 + data_rows_count
-    worksheet.data_validation(table_start_row + 1, 0, val_range_end, 0, {'validate': 'list', 'source': cat_range})
-    worksheet.data_validation(table_start_row + 1, 1, val_range_end, 1, {'validate': 'list', 'source': group_range})
-    worksheet.data_validation(table_start_row + 1, 3, val_range_end, 3, {'validate': 'list', 'source': type_range})
-    worksheet.data_validation(table_start_row + 1, 4, val_range_end, 4, {'validate': 'list', 'source': var_range})
-    worksheet.data_validation(table_start_row + 1, 5, val_range_end, 5, {'validate': 'list', 'source': size_range})
-    worksheet.data_validation(table_start_row + 1, 6, val_range_end, 6, {'validate': 'list', 'source': pack_range})
-    worksheet.data_validation(table_start_row + 1, 9, val_range_end, 9, {'validate': 'list', 'source': curr_range})
-    worksheet.data_validation(table_start_row + 1, 10, val_range_end, 10, {'validate': 'list', 'source': inco_range})
-
-    writer.close()
-    output.seek(0)
-    return output
+    writer.close(); output.seek(0); return output
 
 # ==========================================
 # 🔐 AUTHENTICATION PAGE
@@ -229,7 +194,7 @@ if not st.session_state.user:
         if st.button("Giriş Yap", type="primary"):
             user, msg = login_user(email, password)
             if user:
-                log_login(user['email']) # LOG LOGIN
+                log_login(user['email'])
                 st.session_state.user = user; st.session_state.role = user['role']
                 st.success(f"Hoşgeldiniz, {user['email']} ({user['role']})"); time.sleep(0.5); st.rerun()
             else: st.error(msg)
@@ -331,7 +296,112 @@ else:
                     disp_cols = ["id", "date", "price_tombul", "price_cakildak", "price_levant", "rate_usd_try", "rate_eur_try", "created_by"]; valid_cols = [c for c in disp_cols if c in df_hist.columns]
                     st.dataframe(df_hist[valid_cols].sort_values(by='date', ascending=False).style.format({"price_tombul": "{:.2f}", "price_cakildak": "{:.2f}", "price_levant": "{:.2f}", "rate_usd_try": "{:.4f}", "rate_eur_try": "{:.4f}"}), use_container_width=True, hide_index=True)
 
-    # MODÜL 1-5 (Keeping condensed for brevity as no changes requested there)
+    # ==========================
+    # MODULE 6: OFFERS (WITH QUALITY EDIT)
+    # ==========================
+    elif module == MODULE_MAP[6]:
+        st.title("📄 Teklif Hazırlama (Offers)")
+        
+        # --- MENU STATE ---
+        if st.session_state.offer_step == "menu":
+            if st.button("➕ Create Offer (Yeni Teklif Oluştur)", type="primary"):
+                st.session_state.offer_step = "create"
+                st.rerun()
+            st.info("Click above to start a new offer.")
+
+        # --- CREATE STATE ---
+        elif st.session_state.offer_step == "create":
+            if st.button("⬅️ Back to Menu"):
+                st.session_state.offer_step = "menu"; st.rerun()
+            
+            st.markdown("### 📝 Offer Details & Product List")
+            with st.container():
+                c1, c2, c3 = st.columns(3)
+                date_val = c1.date_input("Date", value=datetime.now())
+                offer_no = c2.text_input("Offer No")
+                validity = c3.text_input("Validity")
+                c4, c5, c6 = st.columns(3)
+                customer = c4.text_input("Customer Name"); cust_ref = c5.text_input("Cust. Ref"); avella_ref = c6.text_input("Avella Ref")
+                c7, c8 = st.columns(2)
+                payment = c7.text_input("Payment Terms"); delivery = c8.text_input("Delivery Address")
+
+            st.markdown("---")
+            
+            # Init DF with CHECKBOX column for interaction
+            if 'offer_rows' not in st.session_state:
+                st.session_state.offer_rows = pd.DataFrame(
+                    [{"⚙️ Quality": False, "Category": "Nuts", "Product Group": "Hazelnuts", "Total Contract Volume (kg)": 0, "Type/Process": "Natural Kernels - Whole", "Variety": "Levant", "Size": "11-13mm", "Packaging": "Bigbag", "Net Wgt (kg)": 1000, "Price": 0.0, "Currency": "USD", "Incoterms": "FCA", "Place of Delivery": "Istanbul", "Minimum Order Quantity (kg)": 1000, "Shipment Schedule": "Prompt", "Payment Terms": "CAD"}],
+                )
+
+            # Define Config including the Checkbox Column
+            column_config = {
+                "⚙️ Quality": st.column_config.CheckboxColumn("⚙️ Quality", help="Click to Edit Quality Parameters", default=False),
+                "Category": st.column_config.SelectboxColumn("Category", options=OFFER_CONSTANTS["Categories"], required=True),
+                "Product Group": st.column_config.SelectboxColumn("Group", options=OFFER_CONSTANTS["Product_Groups"], required=True),
+                "Type/Process": st.column_config.SelectboxColumn("Type", options=OFFER_CONSTANTS["Product_Types"], required=True, width="medium"),
+                "Variety": st.column_config.SelectboxColumn("Variety", options=OFFER_CONSTANTS["Varieties"], required=True),
+                "Size": st.column_config.SelectboxColumn("Size", options=OFFER_CONSTANTS["Sizes"], required=True),
+                "Packaging": st.column_config.SelectboxColumn("Packaging", options=OFFER_CONSTANTS["Packaging"], required=True, width="medium"),
+                "Currency": st.column_config.SelectboxColumn("Currency", options=OFFER_CONSTANTS["Currencies"], required=True, width="small"),
+                "Incoterms": st.column_config.SelectboxColumn("Incoterms", options=OFFER_CONSTANTS["Incoterms"], required=True, width="small"),
+                "Total Contract Volume (kg)": st.column_config.NumberColumn("Vol (kg)", min_value=0),
+                "Net Wgt (kg)": st.column_config.NumberColumn("Net Wgt", min_value=0),
+                "Price": st.column_config.NumberColumn("Price", min_value=0.0, format="%.2f"),
+            }
+
+            edited_df = st.data_editor(st.session_state.offer_rows, column_config=column_config, num_rows="dynamic", use_container_width=True, key="offer_editor")
+            st.session_state.offer_rows = edited_df
+
+            # Check if any row needs editing (CheckBox clicked)
+            rows_to_edit = edited_df.index[edited_df["⚙️ Quality"]].tolist()
+            if rows_to_edit:
+                target_idx = rows_to_edit[0]
+                # Reset checkbox instantly so it doesn't stay checked
+                st.session_state.offer_rows.at[target_idx, "⚙️ Quality"] = False
+                st.session_state.active_quality_row = target_idx
+                st.session_state.offer_step = "edit_quality"
+                st.rerun()
+
+            st.markdown("---")
+            if st.button("💾 Export Offer into Excel", type="primary"):
+                header_payload = {"date": date_val, "offer_no": offer_no, "validity": validity, "customer": customer, "cust_ref": cust_ref, "avella_ref": avella_ref, "payment": payment, "delivery": delivery}
+                with st.spinner("Generating Excel..."):
+                    excel_file = generate_offer_excel(header_data=header_payload, product_df=edited_df, quality_override=st.session_state.offer_quality_data)
+                    st.download_button(label="📥 Download Now", data=excel_file, file_name=f"Avella_Offer_{offer_no if offer_no else 'Draft'}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+        # --- EDIT QUALITY STATE ---
+        elif st.session_state.offer_step == "edit_quality":
+            row_idx = st.session_state.active_quality_row
+            row_data = st.session_state.offer_rows.iloc[row_idx]
+            
+            st.warning(f"🔧 Editing Quality Parameters for Row #{row_idx + 1}")
+            st.info(f"Product: {row_data['Product Group']} | {row_data['Type/Process']} | {row_data['Variety']} | {row_data['Size']}")
+            
+            # Load existing or defaults
+            current_vals = st.session_state.offer_quality_data.get(row_idx, DEFAULT_QUALITY_PARAMS.copy())
+            
+            # Dynamic Form
+            with st.form("quality_form"):
+                cols = st.columns(4)
+                new_vals = {}
+                keys = list(DEFAULT_QUALITY_PARAMS.keys())
+                
+                for i, k in enumerate(keys):
+                    col = cols[i % 4]
+                    default_val = current_vals.get(k, "")
+                    # Determine type for input
+                    if isinstance(default_val, (int, float)):
+                        new_vals[k] = col.number_input(k, value=float(default_val))
+                    else:
+                        new_vals[k] = col.text_input(k, value=str(default_val))
+                
+                st.markdown("---")
+                if st.form_submit_button("✅ Save Parameters"):
+                    st.session_state.offer_quality_data[row_idx] = new_vals
+                    st.session_state.offer_step = "create"
+                    st.rerun()
+
+    # EXISTING MODULES 1-5 (No Changes needed, included for completeness)
     elif module == MODULE_MAP[1]:
         st.title("Modül 1: Şube Ürün Girişi"); hazelnut_cat = "Kabuklu Fındık"; st.info("Bu modül Şubelerden yapılan **Kabuklu Fındık** alımları içindir."); 
         with st.form("sube_hazelnut_form"):
@@ -461,99 +531,8 @@ else:
         if not df.empty: stock = df.groupby('item_name')['quantity'].sum().reset_index(); st.dataframe(stock, use_container_width=True); st.markdown("---"); st.dataframe(df.sort_values(by='created_at', ascending=False))
         else: st.info("Hareket yok.")
 
-    # ==========================
-    # MODULE 6: OFFERS (NEW UI)
-    # ==========================
     elif module == MODULE_MAP[6]:
-        st.title("📄 Teklif Hazırlama (Offers)")
-        
-        # STATE MANAGEMENT: Menu vs Creator
-        if st.session_state.offer_step == "menu":
-            col_main = st.columns(1)[0]
-            if col_main.button("➕ Create Offer (Yeni Teklif Oluştur)", type="primary"):
-                st.session_state.offer_step = "create"
-                st.rerun()
-            
-            st.info("Click the button above to start a new offer.")
-
-        elif st.session_state.offer_step == "create":
-            # --- BACK BUTTON ---
-            if st.button("⬅️ Back to Menu"):
-                st.session_state.offer_step = "menu"
-                st.rerun()
-            
-            st.markdown("### 📝 New Offer Details")
-            
-            # --- SECTION 1: HEADER ---
-            with st.container():
-                c1, c2, c3 = st.columns(3)
-                date_val = c1.date_input("Date", value=datetime.now())
-                offer_no = c2.text_input("Offer No")
-                validity = c3.text_input("Validity")
-                
-                c4, c5, c6 = st.columns(3)
-                customer = c4.text_input("Customer Name")
-                cust_ref = c5.text_input("Cust. Ref")
-                avella_ref = c6.text_input("Avella Ref")
-                
-                c7, c8 = st.columns(2)
-                payment = c7.text_input("Payment Terms")
-                delivery = c8.text_input("Delivery Address")
-
-            st.markdown("---")
-            st.markdown("### 📦 Product List")
-
-            # --- SECTION 2: PRODUCT TABLE (Data Editor) ---
-            # Initial DataFrame Structure
-            if 'offer_rows' not in st.session_state:
-                st.session_state.offer_rows = pd.DataFrame(
-                    [{"Category": "Nuts", "Product Group": "Hazelnuts", "Total Contract Volume (kg)": 0, "Type/Process": "Natural Kernels - Whole", "Variety": "Levant", "Size": "11-13mm", "Packaging": "Bigbag", "Net Wgt (kg)": 1000, "Price": 0.0, "Currency": "USD", "Incoterms": "FCA", "Place of Delivery": "Istanbul", "Minimum Order Quantity (kg)": 1000, "Shipment Schedule": "Prompt", "Payment Terms": "CAD"}],
-                )
-
-            # Configuration for Dropdowns
-            column_config = {
-                "Category": st.column_config.SelectboxColumn("Category", options=OFFER_CONSTANTS["Categories"], required=True),
-                "Product Group": st.column_config.SelectboxColumn("Group", options=OFFER_CONSTANTS["Product_Groups"], required=True),
-                "Type/Process": st.column_config.SelectboxColumn("Type", options=OFFER_CONSTANTS["Product_Types"], required=True, width="medium"),
-                "Variety": st.column_config.SelectboxColumn("Variety", options=OFFER_CONSTANTS["Varieties"], required=True),
-                "Size": st.column_config.SelectboxColumn("Size", options=OFFER_CONSTANTS["Sizes"], required=True),
-                "Packaging": st.column_config.SelectboxColumn("Packaging", options=OFFER_CONSTANTS["Packaging"], required=True, width="medium"),
-                "Currency": st.column_config.SelectboxColumn("Currency", options=OFFER_CONSTANTS["Currencies"], required=True, width="small"),
-                "Incoterms": st.column_config.SelectboxColumn("Incoterms", options=OFFER_CONSTANTS["Incoterms"], required=True, width="small"),
-                "Total Contract Volume (kg)": st.column_config.NumberColumn("Vol (kg)", min_value=0),
-                "Net Wgt (kg)": st.column_config.NumberColumn("Net Wgt", min_value=0),
-                "Price": st.column_config.NumberColumn("Price", min_value=0.0, format="%.2f"),
-            }
-
-            edited_df = st.data_editor(
-                st.session_state.offer_rows,
-                column_config=column_config,
-                num_rows="dynamic",
-                use_container_width=True,
-                key="offer_editor"
-            )
-
-            st.markdown("---")
-            
-            # --- EXPORT BUTTON ---
-            col_export, col_dummy = st.columns([1, 4])
-            with col_export:
-                if st.button("💾 Export Offer into Excel", type="primary"):
-                    # Prepare Data
-                    header_payload = {
-                        "date": date_val, "offer_no": offer_no, "validity": validity,
-                        "customer": customer, "cust_ref": cust_ref, "avella_ref": avella_ref,
-                        "payment": payment, "delivery": delivery
-                    }
-                    
-                    # Generate
-                    with st.spinner("Generating Excel..."):
-                        excel_file = generate_offer_excel(header_data=header_payload, product_df=edited_df)
-                        
-                        # Trigger Download
-                        st.download_button(
-                            label="📥 Download Now (Avella_Offer.xlsx)",
-                            data=excel_file,
-                            file_name=f"Avella_Offer_{offer_no if offer_no else 'Draft'}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
+        st.title("📄 Teklif Hazırlama (Offers)"); st.info("Aşağıdaki butona tıklayarak boş bir Excel teklif şablonu oluşturabilirsiniz."); col_d1, col_d2 = st.columns([1, 2])
+        with col_d1:
+            if st.button("Excel Şablonu Oluştur"):
+                with st.spinner("Excel dosyası hazırlanıyor..."): excel_data = generate_offer_excel(); st.download_button(label="📥 İndir (Avella_Offer_Sheet.xlsx)", data=excel_data, file_name="Avella_Offer_Sheet.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"); st.success("Dosya hazır! İndirme butonuna basınız.")
