@@ -102,13 +102,13 @@ def get_product_specs():
     except: return []
 
 def generate_offer_excel(header_data=None, product_df=None, quality_override=None):
-    """Generates the Offer Excel file."""
     output = io.BytesIO()
     writer = pd.ExcelWriter(output, engine='xlsxwriter')
     workbook = writer.book
     worksheet = workbook.add_worksheet('Offer Sheet')
     worksheet.set_tab_color('#107C41')
 
+    # Formats
     header_format = workbook.add_format({'bold': True, 'font_size': 14, 'color': '#203764'})
     label_format = workbook.add_format({'bold': True, 'align': 'right', 'bg_color': '#f2f2f2', 'border': 1})
     input_format = workbook.add_format({'border': 1, 'bg_color': '#ffffff'})
@@ -116,12 +116,14 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
     linked_cell_format = workbook.add_format({'bg_color': '#E7E6E6', 'border': 1, 'italic': True, 'font_color': '#595959'})
     quality_header_format = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'bg_color': '#FFC000', 'font_color': 'black', 'border': 1, 'text_wrap': True})
 
+    # Header
     worksheet.write('A1', 'AVELLA OFFER SHEET', header_format)
     headers = [("Date:", "B3", header_data.get("date", "")), ("Offer No:", "D3", header_data.get("offer_no", "")), ("Validity:", "F3", header_data.get("validity", "")), ("Customer Name:", "B4", header_data.get("customer", "")), ("Cust. Ref:", "D4", header_data.get("cust_ref", "")), ("Avella Ref:", "F4", header_data.get("avella_ref", "")), ("Payment Terms:", "B5", header_data.get("payment", "")), ("Delivery Addr:", "D5", header_data.get("delivery", ""))]
     for label, cell, val in headers:
         worksheet.write(cell, label, label_format); col_letter = cell[0]; row_num = int(cell[1:]); input_cell = chr(ord(col_letter) + 1) + str(row_num); worksheet.write(input_cell, str(val), input_format)
     worksheet.merge_range('E5:G5', "", input_format)
 
+    # Product Table
     table_start_row = 8
     columns = ["Category", "Product Group", "Total Contract Volume (kg)", "Type/Process", "Variety", "Size", "Packaging", "Net Wgt (kg)", "Price", "Currency", "Incoterms", "Place of Delivery", "Minimum Order Quantity (kg)", "Shipment Schedule", "Payment Terms"]
     for i, col_name in enumerate(columns): worksheet.write(table_start_row, i, col_name, table_header_format); worksheet.set_column(i, i, 15)
@@ -138,22 +140,17 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
                 worksheet.write(row_num, col_idx, val, input_format)
         data_rows_count = max(100, len(product_df) + 10)
 
+    # Quality Sheet
     worksheet_qual = workbook.add_worksheet('Quality Parameters'); worksheet_qual.set_tab_color('#FFC000')
     qual_ident_cols = ["Product Group (Linked)", "Type (Linked)", "Variety (Linked)", "Size (Linked)"]
-    
-    # Dynamic Union of Keys
-    used_params = set(DEFAULT_QUALITY_PARAMS.keys())
-    param_row_limit = 100
-    if product_df is not None:
-        param_row_limit = max(100, len(product_df) + 5)
-        if quality_override:
-            for ridx, params in quality_override.items():
-                used_params.update(params.keys())
-    
-    sorted_params = sorted(list(used_params))
-    all_qual_cols = qual_ident_cols + sorted_params
+    qual_keys = list(DEFAULT_QUALITY_PARAMS.keys())
+    all_qual_cols = qual_ident_cols + qual_keys
 
     for i, col_name in enumerate(all_qual_cols): worksheet_qual.write(table_start_row, i, col_name, quality_header_format); worksheet_qual.set_column(i, i, 22) 
+
+    # Formulas & Values
+    param_row_limit = 100
+    if product_df is not None: param_row_limit = max(100, len(product_df) + 5)
 
     for r_idx in range(param_row_limit):
         xl_row = table_start_row + 1 + r_idx + 1
@@ -167,10 +164,11 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
         if quality_override and r_idx in quality_override:
             row_custom_data = quality_override[r_idx]
 
-        for i, key in enumerate(sorted_params):
+        for i, key in enumerate(qual_keys):
             val = row_custom_data.get(key, DEFAULT_QUALITY_PARAMS.get(key, ""))
             worksheet_qual.write(worksheet_row, 4 + i, val, input_format)
 
+    # Reference Data
     ref_sheet = workbook.add_worksheet('ReferenceData'); ref_sheet.hide()
     def write_list_to_ref(header, data_list, col_idx):
         ref_sheet.write(0, col_idx, header); [ref_sheet.write(i + 1, col_idx, item) for i, item in enumerate(data_list)]; return f"=ReferenceData!${xlsxwriter.utility.xl_col_to_name(col_idx)}$2:${xlsxwriter.utility.xl_col_to_name(col_idx)}${len(data_list) + 1}"
@@ -228,19 +226,21 @@ else:
     st.sidebar.info(f"👤 {user['email']}"); st.sidebar.caption(f"Rol: {role.upper()}")
     if st.sidebar.button("Çıkış Yap"): st.session_state.user = None; st.session_state.role = None; st.rerun()
 
-    available_menu_names = []
-    if role == 'customer': available_menu_names = [CUSTOMER_PORTAL_NAME]
-    elif role == 'administrator':
-        available_menu_names = [CUSTOMER_PORTAL_NAME]
-        for mod_id in [1, 2, 3, 4, 5, 6, 7]: 
+    # --- DYNAMIC ROUTING LOGIC ---
+    available_menu_names = [CUSTOMER_PORTAL_NAME] # Always available to everyone as landing
+    
+    # For Administrators, enable all (or just what they assign themselves, but usually all)
+    if role == 'administrator':
+        for mod_id in [1, 2, 3, 4, 5, 6, 7]:
             if mod_id in MODULE_MAP: available_menu_names.append(MODULE_MAP[mod_id])
-    elif role == 'employee':
+    else:
+        # For Employee/Customer, STRICTLY use allowed_modules
         allowed_ids = user.get('allowed_modules', [])
         if allowed_ids is None: allowed_ids = []
         for mod_id in sorted(allowed_ids):
             if mod_id in MODULE_MAP: available_menu_names.append(MODULE_MAP[mod_id])
 
-    if not available_menu_names: st.error("🚫 Yetkili olduğunuz modül bulunmamaktadır."); st.stop()
+    if len(available_menu_names) == 0: st.error("🚫 Yetkili olduğunuz modül bulunmamaktadır."); st.stop()
     module = st.sidebar.radio("Menü", available_menu_names)
 
     # ==========================
@@ -304,7 +304,7 @@ else:
                     st.dataframe(df_hist[valid_cols].sort_values(by='date', ascending=False).style.format({"price_tombul": "{:.2f}", "price_cakildak": "{:.2f}", "price_levant": "{:.2f}", "rate_usd_try": "{:.4f}", "rate_eur_try": "{:.4f}"}), use_container_width=True, hide_index=True)
 
     # ==========================
-    # MODULE 1-3
+    # MODULE 1
     # ==========================
     elif module == MODULE_MAP[1]:
         st.title("Modül 1: Şube Ürün Girişi"); hazelnut_cat = "Kabuklu Fındık"; st.info("Bu modül Şubelerden yapılan **Kabuklu Fındık** alımları içindir."); 
@@ -320,7 +320,7 @@ else:
             st.markdown("---"); st.subheader("3. Ödeme ve Kayıt"); f1, f2, f3 = st.columns(3); doc_num = f1.text_input("Makbuz / Fatura No"); pay_amount = f2.number_input("Ödenen Tutar", 0.0); pay_method = f3.selectbox("Ödeme Yöntemi", ["Nakit", "Banka", "Çek"]); 
             if reg_type != "Emanet": st.metric("Kalan Bakiye", f"{total_val - pay_amount:,.2f} TL")
             if st.form_submit_button("✅ Şube Girişini Kaydet"):
-                payload = {"created_by": st.session_state.user['email'], "status": "Pending Arrival", "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type, "id_number": id_num, "city": city, "district": dist_in, "village": vill_in, "phone_number": contact, "cert_status": cert_status, "reg_type": reg_type, "location": location, "item_type": hazelnut_type, "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num, "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount, "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag, "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv, "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over, "moisture": val_moist, "calculated_randiman": val_randiman, "gross_price_50": price_gross, "net_price_50": net_price_50, "actual_unit_price": unit_price}; insert_record("purchases", payload); st.success("Fabrika Girişi Kaydedildi!")
+                payload = {"created_by": st.session_state.user['email'], "status": "Pending Arrival", "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type, "id_number": id_num, "city": city, "district": dist_in, "village": vill_in, "phone_number": contact, "cert_status": cert_status, "reg_type": reg_type, "location": location, "item_type": hazelnut_type, "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num, "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount, "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag, "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv, "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over, "moisture": val_moist, "calculated_randiman": val_randiman, "gross_price_50": price_gross, "net_price_50": net_price_50, "actual_unit_price": unit_price}; insert_record("purchases", payload); st.success("Şube Girişi Kaydedildi!")
     elif module == MODULE_MAP[2]:
         st.title("Modül 2: Fabrika Ürün Girişi"); tab_findik, tab_malzeme, tab_genel = st.tabs(["🌰 Fındık Alımı", "📦 Malzeme Alımı", "⚙️ Makine & Hizmet"])
         with tab_findik:
@@ -393,15 +393,36 @@ else:
             # --- CREATE USER SECTION ---
             with st.expander("➕ Create New User (Manually)", expanded=False):
                 with st.form("create_user_admin"):
+                    st.write("**New User Details**")
                     c_new_email = st.text_input("Email")
                     c_new_pass = st.text_input("Password", type="password")
                     c_new_role = st.selectbox("Role", ["employee", "administrator", "customer"])
                     
+                    st.write("**Initial Module Access:**")
+                    cols = st.columns(7)
+                    new_mods = []
+                    # Dynamically create checkboxes for modules 1-7
+                    for i in range(1, 8):
+                        if cols[i-1].checkbox(f"Mod {i}", key=f"new_mod_{i}"):
+                            new_mods.append(i)
+
                     if st.form_submit_button("Create User"):
                         if c_new_email and c_new_pass:
+                            # 1. Register Auth
                             success, msg = register_user(c_new_email, c_new_pass, role=c_new_role)
                             if success:
-                                st.success(f"User Created: {c_new_email}")
+                                # 2. Fetch the new ID (assumes logic in register_user or separate fetch)
+                                # Since we don't have direct access to ID from register_user in typical wrapper,
+                                # we fetch by email.
+                                time.sleep(1) # Allow DB propagation
+                                new_user_data = supabase.table("users").select("id").eq("email", c_new_email).execute()
+                                if new_user_data.data:
+                                    uid = new_user_data.data[0]['id']
+                                    # 3. Update Allowed Modules
+                                    update_user_permissions(uid, True, new_mods, c_new_role)
+                                    st.success(f"User {c_new_email} created with selected modules.")
+                                else:
+                                    st.warning("User created but could not set modules immediately. Please edit below.")
                                 time.sleep(1)
                                 st.rerun()
                             else:
@@ -429,15 +450,16 @@ else:
                         new_role = st.selectbox("Role", role_options, index=role_idx)
                         new_approved = st.checkbox("Account Approved", value=target_user['is_approved'])
                         current_modules = target_user.get('allowed_modules') or []
+                        
                         st.caption("Access Rights")
-                        c1, c2, c3, c4, c5, c6, c7 = st.columns(7) # Added 7
+                        c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
                         m1 = c1.checkbox("1. Şube", 1 in current_modules)
                         m2 = c2.checkbox("2. Fabrika", 2 in current_modules)
                         m3 = c3.checkbox("3. Kantar", 3 in current_modules)
                         m4 = c4.checkbox("4. Admin", 4 in current_modules)
                         m5 = c5.checkbox("5. Stok", 5 in current_modules)
                         m6 = c6.checkbox("6. Offers", 6 in current_modules)
-                        m7 = c7.checkbox("7. Quality", 7 in current_modules) # New module
+                        m7 = c7.checkbox("7. Quality", 7 in current_modules)
                         
                         if st.form_submit_button("💾 Update Permissions"):
                             new_mod_list = []
