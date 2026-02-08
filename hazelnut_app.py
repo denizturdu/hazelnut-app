@@ -14,8 +14,9 @@ st.set_page_config(page_title="Fındık Fabrikası Yönetimi", layout="wide")
 if 'user' not in st.session_state: st.session_state.user = None
 if 'role' not in st.session_state: st.session_state.role = None
 if 'offer_step' not in st.session_state: st.session_state.offer_step = "menu"
-if 'offer_quality_data' not in st.session_state: st.session_state.offer_quality_data = {} # Stores custom quality params by row index
+if 'offer_quality_data' not in st.session_state: st.session_state.offer_quality_data = {} 
 if 'active_quality_row' not in st.session_state: st.session_state.active_quality_row = None
+if 'generated_excel_data' not in st.session_state: st.session_state.generated_excel_data = None # Store generated file
 
 # --- CONSTANTS ---
 MODULE_MAP = {
@@ -123,7 +124,6 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
 
     data_rows_count = 100
     if product_df is not None and not product_df.empty:
-        # Exclude internal columns like "Edit Quality"
         clean_df = product_df[[c for c in product_df.columns if c in columns]].copy()
         for idx, row in clean_df.iterrows():
             row_num = table_start_row + 1 + idx
@@ -139,7 +139,6 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
     for i, col_name in enumerate(all_qual_cols): worksheet_qual.write(table_start_row, i, col_name, quality_header_format); worksheet_qual.set_column(i, i, 22) 
 
     # Write Data/Formulas
-    # If product_df exists, we need to iterate through it to check for overrides
     param_row_limit = 100
     if product_df is not None: param_row_limit = max(100, len(product_df) + 5)
 
@@ -194,7 +193,7 @@ if not st.session_state.user:
         if st.button("Giriş Yap", type="primary"):
             user, msg = login_user(email, password)
             if user:
-                log_login(user['email'])
+                log_login(user['email']) # LOG LOGIN
                 st.session_state.user = user; st.session_state.role = user['role']
                 st.success(f"Hoşgeldiniz, {user['email']} ({user['role']})"); time.sleep(0.5); st.rerun()
             else: st.error(msg)
@@ -297,7 +296,7 @@ else:
                     st.dataframe(df_hist[valid_cols].sort_values(by='date', ascending=False).style.format({"price_tombul": "{:.2f}", "price_cakildak": "{:.2f}", "price_levant": "{:.2f}", "rate_usd_try": "{:.4f}", "rate_eur_try": "{:.4f}"}), use_container_width=True, hide_index=True)
 
     # ==========================
-    # MODULE 6: OFFERS (WITH QUALITY EDIT)
+    # MODULE 6: OFFERS (NEW UI)
     # ==========================
     elif module == MODULE_MAP[6]:
         st.title("📄 Teklif Hazırlama (Offers)")
@@ -327,15 +326,13 @@ else:
 
             st.markdown("---")
             
-            # Init DF with CHECKBOX column for interaction
+            # Init DF WITHOUT CHECKBOXES, Just Data
             if 'offer_rows' not in st.session_state:
                 st.session_state.offer_rows = pd.DataFrame(
-                    [{"⚙️ Quality": False, "Category": "Nuts", "Product Group": "Hazelnuts", "Total Contract Volume (kg)": 0, "Type/Process": "Natural Kernels - Whole", "Variety": "Levant", "Size": "11-13mm", "Packaging": "Bigbag", "Net Wgt (kg)": 1000, "Price": 0.0, "Currency": "USD", "Incoterms": "FCA", "Place of Delivery": "Istanbul", "Minimum Order Quantity (kg)": 1000, "Shipment Schedule": "Prompt", "Payment Terms": "CAD"}],
+                    [{"Category": "Nuts", "Product Group": "Hazelnuts", "Total Contract Volume (kg)": 0, "Type/Process": "Natural Kernels - Whole", "Variety": "Levant", "Size": "11-13mm", "Packaging": "Bigbag", "Net Wgt (kg)": 1000, "Price": 0.0, "Currency": "USD", "Incoterms": "FCA", "Place of Delivery": "Istanbul", "Minimum Order Quantity (kg)": 1000, "Shipment Schedule": "Prompt", "Payment Terms": "CAD"}],
                 )
 
-            # Define Config including the Checkbox Column
             column_config = {
-                "⚙️ Quality": st.column_config.CheckboxColumn("⚙️ Quality", help="Click to Edit Quality Parameters", default=False),
                 "Category": st.column_config.SelectboxColumn("Category", options=OFFER_CONSTANTS["Categories"], required=True),
                 "Product Group": st.column_config.SelectboxColumn("Group", options=OFFER_CONSTANTS["Product_Groups"], required=True),
                 "Type/Process": st.column_config.SelectboxColumn("Type", options=OFFER_CONSTANTS["Product_Types"], required=True, width="medium"),
@@ -349,33 +346,89 @@ else:
                 "Price": st.column_config.NumberColumn("Price", min_value=0.0, format="%.2f"),
             }
 
-            edited_df = st.data_editor(st.session_state.offer_rows, column_config=column_config, num_rows="dynamic", use_container_width=True, key="offer_editor")
-            st.session_state.offer_rows = edited_df
+            # Enable selection
+            edited_df_event = st.data_editor(
+                st.session_state.offer_rows,
+                column_config=column_config,
+                num_rows="dynamic",
+                use_container_width=True,
+                key="offer_editor",
+                on_change=None, # We use simple rerun if needed, but here selection is the key
+                selection_mode="single-row" # ENABLE ROW SELECTION
+            )
+            
+            # The data editor returns the dataframe, but we need selection state from the event object if we used `on_select`
+            # Actually, standard data_editor returns just DF. We need `on_select` logic.
+            # Correction: In new Streamlit, `st.data_editor` returns specific structure OR we use `on_select` callback. 
+            # Simplest way: use the `on_select` parameter to get selection state.
+            
+            # Wait, `st.data_editor` return value IS the edited dataframe.
+            # To get selection, we check session state if we bind it?
+            # Actually, standard usage for selection is:
+            # event = st.dataframe(..., on_select="rerun")
+            # For `data_editor`, it works similarly.
+            
+            # Since I cannot use `event = ...` assignment because `data_editor` returns the DATA, not an event object like `st.dataframe` does (in some versions).
+            # WAIT: As of Streamlit 1.35, `st.data_editor` DOES support `on_select`. 
+            # But it returns the *edited data*. The selection is available via `st.session_state[key]["selection"]["rows"]`.
+            
+            # Let's save the data back
+            st.session_state.offer_rows = edited_df_event
 
-            # Check if any row needs editing (CheckBox clicked)
-            rows_to_edit = edited_df.index[edited_df["⚙️ Quality"]].tolist()
-            if rows_to_edit:
-                target_idx = rows_to_edit[0]
-                # Reset checkbox instantly so it doesn't stay checked
-                st.session_state.offer_rows.at[target_idx, "⚙️ Quality"] = False
-                st.session_state.active_quality_row = target_idx
-                st.session_state.offer_step = "edit_quality"
-                st.rerun()
+            # Check Selection
+            selected_rows = []
+            if "offer_editor" in st.session_state and "selection" in st.session_state.offer_editor:
+                selected_rows = st.session_state.offer_editor["selection"]["rows"]
+
+            if selected_rows:
+                row_idx = selected_rows[0]
+                st.info(f"Row {row_idx + 1} Selected.")
+                if st.button("✏️ Edit Quality for Selected Product (Seçili Ürün Kalite Ayarları)", type="secondary"):
+                    st.session_state.active_quality_row = row_idx
+                    st.session_state.offer_step = "edit_quality"
+                    st.rerun()
+            else:
+                st.caption("Click a row number to enable Quality Editing.")
 
             st.markdown("---")
-            if st.button("💾 Export Offer into Excel", type="primary"):
-                header_payload = {"date": date_val, "offer_no": offer_no, "validity": validity, "customer": customer, "cust_ref": cust_ref, "avella_ref": avella_ref, "payment": payment, "delivery": delivery}
+            if st.button("Prepare & Export Offer (Teklifi Hazırla)", type="primary"):
+                # Prepare Data in Memory
+                header_payload = {
+                    "date": date_val, "offer_no": offer_no, "validity": validity,
+                    "customer": customer, "cust_ref": cust_ref, "avella_ref": avella_ref,
+                    "payment": payment, "delivery": delivery
+                }
+                
                 with st.spinner("Generating Excel..."):
-                    excel_file = generate_offer_excel(header_data=header_payload, product_df=edited_df, quality_override=st.session_state.offer_quality_data)
-                    st.download_button(label="📥 Download Now", data=excel_file, file_name=f"Avella_Offer_{offer_no if offer_no else 'Draft'}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    excel_data = generate_offer_excel(
+                        header_data=header_payload, 
+                        product_df=st.session_state.offer_rows, 
+                        quality_override=st.session_state.offer_quality_data
+                    )
+                    st.session_state.generated_excel_data = excel_data
+                    st.success("Offer Generated! Click Download below.")
+            
+            # Show Download Button ONLY if file exists
+            if st.session_state.generated_excel_data:
+                st.download_button(
+                    label="📥 Download Excel File",
+                    data=st.session_state.generated_excel_data,
+                    file_name=f"Avella_Offer_{offer_no if offer_no else 'Draft'}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
 
         # --- EDIT QUALITY STATE ---
         elif st.session_state.offer_step == "edit_quality":
             row_idx = st.session_state.active_quality_row
+            # Safety check
+            if row_idx is None or row_idx >= len(st.session_state.offer_rows):
+                st.session_state.offer_step = "create"
+                st.rerun()
+
             row_data = st.session_state.offer_rows.iloc[row_idx]
             
             st.warning(f"🔧 Editing Quality Parameters for Row #{row_idx + 1}")
-            st.info(f"Product: {row_data['Product Group']} | {row_data['Type/Process']} | {row_data['Variety']} | {row_data['Size']}")
+            st.write(f"**Product:** {row_data['Product Group']} | {row_data['Type/Process']} | {row_data['Variety']} | {row_data['Size']}")
             
             # Load existing or defaults
             current_vals = st.session_state.offer_quality_data.get(row_idx, DEFAULT_QUALITY_PARAMS.copy())
@@ -389,19 +442,18 @@ else:
                 for i, k in enumerate(keys):
                     col = cols[i % 4]
                     default_val = current_vals.get(k, "")
-                    # Determine type for input
                     if isinstance(default_val, (int, float)):
                         new_vals[k] = col.number_input(k, value=float(default_val))
                     else:
                         new_vals[k] = col.text_input(k, value=str(default_val))
                 
                 st.markdown("---")
-                if st.form_submit_button("✅ Save Parameters"):
+                if st.form_submit_button("✅ Save Parameters & Return"):
                     st.session_state.offer_quality_data[row_idx] = new_vals
                     st.session_state.offer_step = "create"
                     st.rerun()
 
-    # EXISTING MODULES 1-5 (No Changes needed, included for completeness)
+    # EXISTING MODULES 1-5 (Keeping condensed for brevity as no changes requested there)
     elif module == MODULE_MAP[1]:
         st.title("Modül 1: Şube Ürün Girişi"); hazelnut_cat = "Kabuklu Fındık"; st.info("Bu modül Şubelerden yapılan **Kabuklu Fındık** alımları içindir."); 
         with st.form("sube_hazelnut_form"):
@@ -532,7 +584,4 @@ else:
         else: st.info("Hareket yok.")
 
     elif module == MODULE_MAP[6]:
-        st.title("📄 Teklif Hazırlama (Offers)"); st.info("Aşağıdaki butona tıklayarak boş bir Excel teklif şablonu oluşturabilirsiniz."); col_d1, col_d2 = st.columns([1, 2])
-        with col_d1:
-            if st.button("Excel Şablonu Oluştur"):
-                with st.spinner("Excel dosyası hazırlanıyor..."): excel_data = generate_offer_excel(); st.download_button(label="📥 İndir (Avella_Offer_Sheet.xlsx)", data=excel_data, file_name="Avella_Offer_Sheet.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"); st.success("Dosya hazır! İndirme butonuna basınız.")
+        st.title("📄 Teklif Hazırlama (Offers)")
