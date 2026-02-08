@@ -124,9 +124,7 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
 
     data_rows_count = 100
     if product_df is not None and not product_df.empty:
-        # Filter only valid columns to write to Excel (skip 'Edit' column)
-        valid_cols = [c for c in columns if c in product_df.columns] # Only write existing cols
-        # We need to map dataframe row values to the correct Excel columns
+        valid_cols = [c for c in columns if c in product_df.columns]
         for idx, row in product_df.iterrows():
             row_num = table_start_row + 1 + idx
             for col_idx, col_name in enumerate(columns):
@@ -193,7 +191,7 @@ if not st.session_state.user:
         if st.button("Giriş Yap", type="primary"):
             user, msg = login_user(email, password)
             if user:
-                log_login(user['email']) # LOG LOGIN
+                log_login(user['email'])
                 st.session_state.user = user; st.session_state.role = user['role']
                 st.success(f"Hoşgeldiniz, {user['email']} ({user['role']})"); time.sleep(0.5); st.rerun()
             else: st.error(msg)
@@ -326,15 +324,16 @@ else:
 
             st.markdown("---")
             
-            # Init DF with 'Edit' column
+            # Init DF
             if 'offer_rows' not in st.session_state:
                 st.session_state.offer_rows = pd.DataFrame(
-                    [{"⚙️ Edit Details": False, "Category": "Nuts", "Product Group": "Hazelnuts", "Total Contract Volume (kg)": 0, "Type/Process": "Natural Kernels - Whole", "Variety": "Levant", "Size": "11-13mm", "Packaging": "Bigbag", "Net Wgt (kg)": 1000, "Price": 0.0, "Currency": "USD", "Incoterms": "FCA", "Place of Delivery": "Istanbul", "Minimum Order Quantity (kg)": 1000, "Shipment Schedule": "Prompt", "Payment Terms": "CAD"}],
+                    [{"Quality Parameters": "Default", "Category": "Nuts", "Product Group": "Hazelnuts", "Total Contract Volume (kg)": 0, "Type/Process": "Natural Kernels - Whole", "Variety": "Levant", "Size": "11-13mm", "Packaging": "Bigbag", "Net Wgt (kg)": 1000, "Price": 0.0, "Currency": "USD", "Incoterms": "FCA", "Place of Delivery": "Istanbul", "Minimum Order Quantity (kg)": 1000, "Shipment Schedule": "Prompt", "Payment Terms": "CAD"}],
                 )
 
             # Define Config
             column_config = {
-                "⚙️ Edit Details": st.column_config.CheckboxColumn("⚙️ Edit Details", help="Click to Edit Quality", default=False),
+                # Interaction Column: Text Selectbox
+                "Quality Parameters": st.column_config.SelectboxColumn("Quality Parameters", options=["Default", "Edit...", "Updated"], required=True, width="small", help="Select 'Edit...' to modify"),
                 "Category": st.column_config.SelectboxColumn("Category", options=OFFER_CONSTANTS["Categories"], required=True),
                 "Product Group": st.column_config.SelectboxColumn("Group", options=OFFER_CONSTANTS["Product_Groups"], required=True),
                 "Type/Process": st.column_config.SelectboxColumn("Type", options=OFFER_CONSTANTS["Product_Types"], required=True, width="medium"),
@@ -348,7 +347,7 @@ else:
                 "Price": st.column_config.NumberColumn("Price", min_value=0.0, format="%.2f"),
             }
 
-            # Standard Data Editor (Works on all versions)
+            # Standard Data Editor
             edited_df = st.data_editor(
                 st.session_state.offer_rows,
                 column_config=column_config,
@@ -357,12 +356,17 @@ else:
                 key="offer_editor"
             )
             
-            # Check for Toggle Click
-            rows_to_edit = edited_df.index[edited_df["⚙️ Edit Details"]].tolist()
+            # Check for "Edit..." Trigger
+            # Find any row where user selected "Edit..."
+            rows_to_edit = edited_df.index[edited_df["Quality Parameters"] == "Edit..."].tolist()
+            
             if rows_to_edit:
                 target_idx = rows_to_edit[0]
-                # Reset instantly to act as button
-                edited_df.at[target_idx, "⚙️ Edit Details"] = False
+                # Reset visual value immediately so it doesn't stay on "Edit..."
+                # If we had custom data before, revert to "Updated", else "Default"
+                prev_status = "Updated" if target_idx in st.session_state.offer_quality_data else "Default"
+                edited_df.at[target_idx, "Quality Parameters"] = prev_status
+                
                 st.session_state.offer_rows = edited_df
                 st.session_state.active_quality_row = target_idx
                 st.session_state.offer_step = "edit_quality"
@@ -417,10 +421,12 @@ else:
                 st.markdown("---")
                 if st.form_submit_button("✅ Save Parameters & Return"):
                     st.session_state.offer_quality_data[row_idx] = new_vals
+                    # UPDATE STATUS TO "UPDATED"
+                    st.session_state.offer_rows.at[row_idx, "Quality Parameters"] = "Updated"
                     st.session_state.offer_step = "create"
                     st.rerun()
 
-    # EXISTING MODULES 1-5 (Keeping condensed for brevity)
+    # EXISTING MODULES 1-5 (Keeping condensed)
     elif module == MODULE_MAP[1]:
         st.title("Modül 1: Şube Ürün Girişi"); hazelnut_cat = "Kabuklu Fındık"; st.info("Bu modül Şubelerden yapılan **Kabuklu Fındık** alımları içindir."); 
         with st.form("sube_hazelnut_form"):
