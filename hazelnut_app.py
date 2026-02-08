@@ -207,75 +207,23 @@ else:
     # --- MENU LISTS ---
     menu_tr = []; menu_mgmt = []; menu_prt = []
     
-    # 1. Avella Turkiye
     if has_access(1): menu_tr.append(MODULE_MAP[1])
     if has_access(3): menu_tr.append(MODULE_MAP[3])
     if has_access(5): menu_tr.append(MODULE_MAP[5])
     if has_access(7): menu_tr.append(MODULE_MAP[7])
     
-    # 2. Management
     if has_access(4): menu_mgmt.append(MODULE_MAP[4])
     if has_access(6): menu_mgmt.append(MODULE_MAP[6])
     
-    # 3. Partners
     menu_prt.append(CUSTOMER_PORTAL_NAME)
 
-    # --- STATE MANAGEMENT FOR MENUS ---
-    # We use 3 separate radios. We need to know which one was "last clicked".
-    # Since Streamlit re-runs on click, we check if the value changed.
-    
-    # Initialize separate state variables if not exist
-    if 'menu_tr_sel' not in st.session_state: st.session_state.menu_tr_sel = None
-    if 'menu_mgmt_sel' not in st.session_state: st.session_state.menu_mgmt_sel = None
-    if 'menu_prt_sel' not in st.session_state: st.session_state.menu_prt_sel = None
-
-    # We need a robust way to enforce "One Active".
-    # Logic: We use `key` parameter. If a user clicks TR menu, `st.session_state.key_tr` updates.
-    # We detect which key changed and set `st.session_state.active_module`.
-    # Then we trick the other radios to be "None" index? Streamlit < 1.29 doesn't support index=None easily.
-    # WORKAROUND: We will use a unique layout.
-    
     st.sidebar.markdown("---")
     
     # SECTION 1: TURKIYE
     if menu_tr:
-        st.sidebar.header("🇹🇷 Avella Turkiye")
-        # We find the index of active module if it is in this list
-        idx_tr = 0
-        if st.session_state.active_module in menu_tr:
-            idx_tr = menu_tr.index(st.session_state.active_module)
-        else:
-            # If active module is NOT here, we want to visually deselect.
-            # Standard Streamlit radio forces a selection.
-            # We will use a hack: We assume the user clicks.
-            pass
-
-        # To avoid the "Ghost Selection" issue, we will actually rely on simple buttons for Headers if radios fail us?
-        # No, let's use the single radio list, but with DISABLED separators.
-        # But Streamlit doesn't support disabled items in a list.
-        
-        # FINAL ATTEMPT AT SINGLE LIST WITH HEADERS (Visually closest)
-        # We will use a single radio, but we will prefix items with their group, and filter purely by text.
-        # But the user specifically wanted headers.
-        
-        # OKAY, I WILL USE CALLBACKS to clear other states.
-        # This requires `st.session_state` manipulation.
-        
-        def update_tr():
-            st.session_state.active_module = st.session_state.radio_tr
-        
-        # We calculate 'index' properly. If active_module is NOT in this list, we set index to 0 (default) or None if supported.
-        # Since we can't hide selection in older Streamlit, we might see multiple highlights if not careful.
-        # We will use `st.sidebar.button` for navigation instead? No, sidebar state resets.
-        
-        # LET'S USE THE PROVEN "EXPANDER" METHOD TO GROUP
-        # Expander 1: Turkiye (Radio inside)
-        # Expander 2: Management (Radio inside)
-        # This allows visual grouping and hiding.
-        
         with st.sidebar.expander("🇹🇷 Avella Turkiye", expanded=True):
             val_tr = st.radio("Select Module", menu_tr, key="radio_tr", label_visibility="collapsed")
-            if st.button("Go to TR Module"):
+            if st.button("Modüle gidiniz"):
                 st.session_state.active_module = val_tr
                 st.rerun()
 
@@ -284,7 +232,7 @@ else:
         with st.sidebar.expander("🏢 Avella Management", expanded=True):
             if menu_mgmt:
                 val_mgmt = st.radio("Select Module", menu_mgmt, key="radio_mgmt", label_visibility="collapsed")
-                if st.button("Go to Mgmt Module"):
+                if st.button("Go to the Module"):
                     st.session_state.active_module = val_mgmt
                     st.rerun()
             else:
@@ -449,9 +397,6 @@ else:
             else: st.info("Bekleyen yok.")
         except Exception as e: st.error(f"Hata: {e}")
 
-    # ==========================
-    # MODULE 4: ADMINISTRATOR
-    # ==========================
     elif module == MODULE_MAP[4]:
         st.title("🛠️ Administrator Settings")
         tab_users, tab_mat, tab_logs = st.tabs(["👥 User Permissions and Approval", "📦 Material Definitions", "📜 Login Logs"])
