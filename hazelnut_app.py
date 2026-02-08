@@ -25,7 +25,8 @@ MODULE_MAP = {
     3: "3. Mal Kabul (Kantar)",
     4: "4. Yönetici Ayarları",
     5: "5. Stok Takibi",
-    6: "6. Teklifler (Offers)"
+    6: "6. Teklifler (Offers)",
+    7: "7. Kalite Kontrol (Quality Control)"
 }
 
 CUSTOMER_PORTAL_NAME = "🌍 Avella Customer Portal"
@@ -91,6 +92,13 @@ def get_live_rates():
 def log_login(email):
     try: supabase.table("login_logs").insert({"email": email}).execute()
     except Exception as e: print(f"Login log error: {e}")
+
+def get_product_specs():
+    """Fetches defined product specifications from DB."""
+    try:
+        response = supabase.table("product_specs").select("*").execute()
+        return response.data
+    except: return []
 
 def generate_offer_excel(header_data=None, product_df=None, quality_override=None):
     """Generates the Offer Excel file."""
@@ -222,7 +230,7 @@ else:
     if role == 'customer': available_menu_names = [CUSTOMER_PORTAL_NAME]
     elif role == 'administrator':
         available_menu_names = [CUSTOMER_PORTAL_NAME]
-        for mod_id in [1, 2, 3, 4, 5, 6]: 
+        for mod_id in [1, 2, 3, 4, 5, 6, 7]: # Added 7
             if mod_id in MODULE_MAP: available_menu_names.append(MODULE_MAP[mod_id])
     elif role == 'employee':
         allowed_ids = user.get('allowed_modules', [])
@@ -332,7 +340,6 @@ else:
 
             # Define Config
             column_config = {
-                # Interaction Column: Text Selectbox
                 "Quality Parameters": st.column_config.SelectboxColumn("Quality Parameters", options=["Default", "Edit...", "Updated"], required=True, width="small", help="Select 'Edit...' to modify"),
                 "Category": st.column_config.SelectboxColumn("Category", options=OFFER_CONSTANTS["Categories"], required=True),
                 "Product Group": st.column_config.SelectboxColumn("Group", options=OFFER_CONSTANTS["Product_Groups"], required=True),
@@ -347,53 +354,31 @@ else:
                 "Price": st.column_config.NumberColumn("Price", min_value=0.0, format="%.2f"),
             }
 
-            # Standard Data Editor
-            edited_df = st.data_editor(
-                st.session_state.offer_rows,
-                column_config=column_config,
-                num_rows="dynamic",
-                use_container_width=True,
-                key="offer_editor"
-            )
+            edited_df = st.data_editor(st.session_state.offer_rows, column_config=column_config, num_rows="dynamic", use_container_width=True, key="offer_editor")
             
             # Check for "Edit..." Trigger
-            # Find any row where user selected "Edit..."
             rows_to_edit = edited_df.index[edited_df["Quality Parameters"] == "Edit..."].tolist()
-            
             if rows_to_edit:
                 target_idx = rows_to_edit[0]
-                # Reset visual value immediately so it doesn't stay on "Edit..."
-                # If we had custom data before, revert to "Updated", else "Default"
                 prev_status = "Updated" if target_idx in st.session_state.offer_quality_data else "Default"
                 edited_df.at[target_idx, "Quality Parameters"] = prev_status
-                
                 st.session_state.offer_rows = edited_df
                 st.session_state.active_quality_row = target_idx
                 st.session_state.offer_step = "edit_quality"
                 st.rerun()
             else:
-                # Just save the data if no special action
                 st.session_state.offer_rows = edited_df
 
             st.markdown("---")
             if st.button("Prepare & Export Offer (Teklifi Hazırla)", type="primary"):
                 header_payload = {"date": date_val, "offer_no": offer_no, "validity": validity, "customer": customer, "cust_ref": cust_ref, "avella_ref": avella_ref, "payment": payment, "delivery": delivery}
                 with st.spinner("Generating Excel..."):
-                    excel_data = generate_offer_excel(
-                        header_data=header_payload, 
-                        product_df=st.session_state.offer_rows, 
-                        quality_override=st.session_state.offer_quality_data
-                    )
+                    excel_data = generate_offer_excel(header_data=header_payload, product_df=st.session_state.offer_rows, quality_override=st.session_state.offer_quality_data)
                     st.session_state.generated_excel_data = excel_data
                     st.success("Offer Generated!")
             
             if st.session_state.generated_excel_data:
-                st.download_button(
-                    label="📥 Download Excel File",
-                    data=st.session_state.generated_excel_data,
-                    file_name=f"Avella_Offer_{offer_no if offer_no else 'Draft'}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+                st.download_button(label="📥 Download Excel File", data=st.session_state.generated_excel_data, file_name=f"Avella_Offer_{offer_no if offer_no else 'Draft'}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
         # --- EDIT QUALITY STATE ---
         elif st.session_state.offer_step == "edit_quality":
@@ -402,10 +387,33 @@ else:
                 st.session_state.offer_step = "create"; st.rerun()
 
             row_data = st.session_state.offer_rows.iloc[row_idx]
+            current_prod_type = row_data['Type/Process']
             
             st.warning(f"🔧 Editing Quality Parameters for Row #{row_idx + 1}")
-            st.write(f"**Product:** {row_data['Product Group']} | {row_data['Type/Process']} | {row_data['Variety']} | {row_data['Size']}")
+            st.write(f"**Product:** {row_data['Product Group']} | {current_prod_type} | {row_data['Variety']} | {row_data['Size']}")
             
+            # --- TEMPLATE SELECTION ---
+            all_specs = get_product_specs()
+            # Filter specs by current product type
+            relevant_specs = [s for s in all_specs if s.get('product_type') == current_prod_type]
+            # Also allow seeing ALL specs in case mapping is loose
+            spec_options = {f"{s['spec_name']} ({s['product_type']})": s['parameters'] for s in all_specs}
+            
+            # Build display list, prioritizing matching types
+            display_keys = [f"{s['spec_name']} ({s['product_type']})" for s in relevant_specs]
+            other_keys = [k for k in spec_options.keys() if k not in display_keys]
+            final_options = ["(Select to Load)"] + display_keys + ["--- Other Types ---"] + other_keys
+
+            selected_template = st.selectbox("📥 Load from Specification Template", final_options)
+            
+            # Logic: If template selected, update session state data immediately
+            if selected_template and selected_template not in ["(Select to Load)", "--- Other Types ---"]:
+                # Load params into temp session var to pre-fill form
+                st.session_state.offer_quality_data[row_idx] = spec_options[selected_template]
+                st.success(f"Loaded template: {selected_template}")
+                # We do NOT return immediately, we let the form below render with these new values
+
+            # Load current values (which might have just been updated by the template loader above)
             current_vals = st.session_state.offer_quality_data.get(row_idx, DEFAULT_QUALITY_PARAMS.copy())
             
             with st.form("quality_form"):
@@ -421,12 +429,70 @@ else:
                 st.markdown("---")
                 if st.form_submit_button("✅ Save Parameters & Return"):
                     st.session_state.offer_quality_data[row_idx] = new_vals
-                    # UPDATE STATUS TO "UPDATED"
                     st.session_state.offer_rows.at[row_idx, "Quality Parameters"] = "Updated"
                     st.session_state.offer_step = "create"
                     st.rerun()
 
-    # EXISTING MODULES 1-5 (Keeping condensed)
+    # ==========================
+    # MODULE 7: QUALITY CONTROL
+    # ==========================
+    elif module == MODULE_MAP[6]: # Fallback? No, new ID.
+        pass # handled below
+    
+    if module == MODULE_MAP.get(7): # "7. Kalite Kontrol (Quality Control)"
+        st.title("🛡️ Kalite Kontrol & Spesifikasyonlar")
+        
+        tab_create, tab_list = st.tabs(["➕ Create Specification", "📜 Specification List"])
+        
+        with tab_create:
+            st.markdown("### Define New Product Specification")
+            with st.form("new_spec_form"):
+                c1, c2 = st.columns(2)
+                spec_name = c1.text_input("Specification Name (e.g. 'Std Natural 11-13')", required=True)
+                prod_type = c2.selectbox("Associated Product Type", OFFER_CONSTANTS["Product_Types"])
+                
+                st.markdown("---")
+                st.write("**Default Quality Parameters**")
+                cols = st.columns(4)
+                spec_vals = {}
+                keys = list(DEFAULT_QUALITY_PARAMS.keys())
+                for i, k in enumerate(keys):
+                    col = cols[i % 4]
+                    default_val = DEFAULT_QUALITY_PARAMS[k]
+                    if isinstance(default_val, (int, float)): spec_vals[k] = col.number_input(k, value=float(default_val))
+                    else: spec_vals[k] = col.text_input(k, value=str(default_val))
+                
+                st.markdown("---")
+                if st.form_submit_button("💾 Save Specification"):
+                    if spec_name:
+                        payload = {
+                            "spec_name": spec_name,
+                            "product_type": prod_type,
+                            "parameters": spec_vals,
+                            "created_by": st.session_state.user['email']
+                        }
+                        try:
+                            insert_record("product_specs", payload)
+                            st.success("Specification Saved!")
+                        except Exception as e: st.error(f"Error: {e}")
+                    else: st.error("Specification Name is required.")
+
+        with tab_list:
+            st.markdown("### Existing Specifications")
+            specs = get_product_specs()
+            if specs:
+                df_specs = pd.DataFrame(specs)
+                st.dataframe(df_specs[["spec_name", "product_type", "created_by", "created_at"]], use_container_width=True)
+                
+                # Expand details
+                selected_spec_name = st.selectbox("Select Spec to View Details", df_specs["spec_name"].tolist())
+                if selected_spec_name:
+                    sel_data = next(s for s in specs if s["spec_name"] == selected_spec_name)
+                    st.json(sel_data["parameters"])
+            else:
+                st.info("No specifications defined yet.")
+
+    # EXISTING MODULES 1-5 (Condensed)
     elif module == MODULE_MAP[1]:
         st.title("Modül 1: Şube Ürün Girişi"); hazelnut_cat = "Kabuklu Fındık"; st.info("Bu modül Şubelerden yapılan **Kabuklu Fındık** alımları içindir."); 
         with st.form("sube_hazelnut_form"):
@@ -535,26 +601,16 @@ else:
         with tab_logs:
             st.markdown("### 📜 Sistem Giriş Kayıtları")
             try:
-                # Fetch last 1000 logs
                 logs_response = supabase.table("login_logs").select("*").order("login_at", desc=True).limit(1000).execute()
                 if logs_response.data:
                     df_logs = pd.DataFrame(logs_response.data)
-                    
-                    # FIX: Format the date
-                    df_logs['login_at'] = pd.to_datetime(df_logs['login_at'])
-                    df_logs['login_at'] = df_logs['login_at'].dt.strftime('%Y-%m-%d %H:%M:%S')
-                    
+                    df_logs['login_at'] = pd.to_datetime(df_logs['login_at']).dt.strftime('%Y-%m-%d %H:%M:%S')
                     df_logs.rename(columns={"email": "Kullanıcı", "login_at": "Tarih/Saat"}, inplace=True)
                     st.dataframe(df_logs[["Kullanıcı", "Tarih/Saat"]], use_container_width=True)
-                else:
-                    st.info("Henüz kayıt bulunmamaktadır.")
-            except Exception as e:
-                st.error(f"Loglar yüklenirken hata oluştu: {e}")
+                else: st.info("Henüz kayıt bulunmamaktadır.")
+            except Exception as e: st.error(f"Loglar yüklenirken hata oluştu: {e}")
 
     elif module == MODULE_MAP[5]:
         st.title("📦 Stok"); moves = supabase.table("stock_movements").select("*").execute().data; df = pd.DataFrame(moves)
         if not df.empty: stock = df.groupby('item_name')['quantity'].sum().reset_index(); st.dataframe(stock, use_container_width=True); st.markdown("---"); st.dataframe(df.sort_values(by='created_at', ascending=False))
         else: st.info("Hareket yok.")
-
-    elif module == MODULE_MAP[6]:
-        st.title("📄 Teklif Hazırlama (Offers)")
