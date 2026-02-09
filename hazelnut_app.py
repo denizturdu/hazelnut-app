@@ -68,13 +68,11 @@ def get_market_prices():
     except: return pd.DataFrame()
 
 def get_export_figures():
-    """Fetch export figures and calculate derived columns."""
     try:
         response = supabase.table("export_figures").select("*").order("week_ending_date", desc=False).execute()
         df = pd.DataFrame(response.data)
         if not df.empty:
             df['week_ending_date'] = pd.to_datetime(df['week_ending_date'])
-            # Calc Avg Price: USD / (Tons * 1000)
             df['avg_kg_price'] = df.apply(lambda x: x['total_export_value_usd'] / (x['total_metric_tons'] * 1000) if x['total_metric_tons'] > 0 else 0, axis=1)
             df['price_change'] = df['avg_kg_price'].diff()
         return df
@@ -211,7 +209,7 @@ if not st.session_state.user:
                 else: st.error(msg)
 
 # ==========================================
-# 🚀 MAIN APP (ROUTER LOGIC)
+# 🚀 MAIN APP - MULTI-MENU SIDEBAR
 # ==========================================
 else:
     user = st.session_state.user; role = st.session_state.role
