@@ -83,6 +83,7 @@ def get_export_figures():
         df = pd.DataFrame(response.data)
         if not df.empty:
             df['week_ending_date'] = pd.to_datetime(df['week_ending_date'])
+            # Calc Avg Price: USD / (Tons * 1000)
             df['avg_kg_price'] = df.apply(lambda x: x['total_export_value_usd'] / (x['total_metric_tons'] * 1000) if x['total_metric_tons'] > 0 else 0, axis=1)
             df['price_change'] = df['avg_kg_price'].diff()
         return df
@@ -102,28 +103,66 @@ def get_live_rates():
     return rates
 
 def get_historical_rates(date_obj, time_obj=None):
-    if yf is None: st.error("yfinance library not found. Please add 'yfinance' to requirements.txt"); return None
+    """
+    Fetches historical exchange rates using yfinance.
+    Tries to be smart: if recent, uses hourly data. If old, uses daily close.
+    """
+    if yf is None:
+        st.error("yfinance library not found. Please add 'yfinance' to requirements.txt")
+        return None
+
     try:
         tickers = ["TRY=X", "EURTRY=X"]
+        
+        # Widen window to catch weekends/holidays (look back 5 days from target)
+        # End date is exclusive, so +1
         end_date = date_obj + timedelta(days=1)
         start_date = date_obj - timedelta(days=5)
+        
+        # Try intraday first (1h)
         interval = "1h"
         data = yf.download(tickers, start=start_date, end=end_date, interval=interval, progress=False)
+        
         if data.empty:
+             # Fallback to daily
              interval = "1d"
              data = yf.download(tickers, start=start_date, end=end_date, interval=interval, progress=False)
-        if data.empty: return None
-        try: close_data = data['Close']
-        except KeyError: return None
+        
+        if data.empty:
+            return None
+            
+        # Extract Close data
+        try:
+            close_data = data['Close']
+        except KeyError:
+            return None
+            
+        # Filter to only include data BEFORE or AT the user's specific datetime
+        # We need to find the latest available price point relative to user input
+        
         target_dt = datetime.combine(date_obj, time_obj) if time_obj else datetime.combine(date_obj, datetime.max.time())
+        
+        # Normalize index to timezone-naive to compare with target_dt
         close_data.index = close_data.index.tz_localize(None)
+        
+        # Filter rows <= target_dt
         mask = close_data.index <= target_dt
         filtered = close_data[mask]
-        if not filtered.empty: last_row = filtered.iloc[-1]
-        else: last_row = close_data.iloc[0]
-        final_usd = last_row.get('TRY=X'); final_eur = last_row.get('EURTRY=X')
+        
+        if not filtered.empty:
+            last_row = filtered.iloc[-1]
+        else:
+            # If no data before target (rare with 5 day window), take the very first available in window
+            last_row = close_data.iloc[0]
+
+        final_usd = last_row.get('TRY=X')
+        final_eur = last_row.get('EURTRY=X')
+            
         return {"USD": float(final_usd) if final_usd else 0.0, "EUR": float(final_eur) if final_eur else 0.0}
-    except Exception as e: print(f"Rate fetch error: {e}"); return None
+
+    except Exception as e:
+        print(f"Rate fetch error: {e}")
+        return None
 
 def log_login(email):
     try: supabase.table("login_logs").insert({"email": email}).execute()
@@ -139,27 +178,33 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
     workbook = writer.book
     worksheet = workbook.add_worksheet('Offer Sheet')
     worksheet.set_tab_color('#107C41')
+
     header_format = workbook.add_format({'bold': True, 'font_size': 14, 'color': '#203764'})
     label_format = workbook.add_format({'bold': True, 'align': 'right', 'bg_color': '#f2f2f2', 'border': 1})
     input_format = workbook.add_format({'border': 1, 'bg_color': '#ffffff'})
     table_header_format = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'bg_color': '#4472C4', 'font_color': 'white', 'border': 1, 'text_wrap': True})
     linked_cell_format = workbook.add_format({'bg_color': '#E7E6E6', 'border': 1, 'italic': True, 'font_color': '#595959'})
     quality_header_format = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'bg_color': '#FFC000', 'font_color': 'black', 'border': 1, 'text_wrap': True})
+
     worksheet.write('A1', 'AVELLA OFFER SHEET', header_format)
     headers = [("Date:", "B3", header_data.get("date", "")), ("Offer No:", "D3", header_data.get("offer_no", "")), ("Validity:", "F3", header_data.get("validity", "")), ("Customer Name:", "B4", header_data.get("customer", "")), ("Cust. Ref:", "D4", header_data.get("cust_ref", "")), ("Avella Ref:", "F4", header_data.get("avella_ref", "")), ("Payment Terms:", "B5", header_data.get("payment", "")), ("Delivery Addr:", "D5", header_data.get("delivery", ""))]
     for label, cell, val in headers:
         worksheet.write(cell, label, label_format); col_letter = cell[0]; row_num = int(cell[1:]); input_cell = chr(ord(col_letter) + 1) + str(row_num); worksheet.write(input_cell, str(val), input_format)
     worksheet.merge_range('E5:G5', "", input_format)
+
     table_start_row = 8
     columns = ["Category", "Product Group", "Total Contract Volume (kg)", "Type/Process", "Variety", "Size", "Packaging", "Net Wgt (kg)", "Price", "Currency", "Incoterms", "Place of Delivery", "Minimum Order Quantity (kg)", "Shipment Schedule", "Payment Terms"]
     for i, col_name in enumerate(columns): worksheet.write(table_start_row, i, col_name, table_header_format); worksheet.set_column(i, i, 15)
+    
     worksheet.set_column('B:B', 20); worksheet.set_column('C:C', 20); worksheet.set_column('D:D', 25); worksheet.set_column('E:E', 20); worksheet.set_column('G:G', 25); worksheet.set_column('L:L', 20); worksheet.set_column('M:M', 25); worksheet.set_column('N:N', 20); worksheet.set_column('O:O', 20)
+
     if product_df is not None and not product_df.empty:
         for idx, row in product_df.iterrows():
             row_num = table_start_row + 1 + idx
             for col_idx, col_name in enumerate(columns):
                 val = row.get(col_name, "")
                 worksheet.write(row_num, col_idx, val, input_format)
+
     worksheet_qual = workbook.add_worksheet('Quality Parameters'); worksheet_qual.set_tab_color('#FFC000')
     qual_ident_cols = ["Product Group (Linked)", "Type (Linked)", "Variety (Linked)", "Size (Linked)"]
     used_params = set(DEFAULT_QUALITY_PARAMS.keys())
@@ -168,22 +213,31 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
         param_row_limit = max(100, len(product_df) + 5)
         if quality_override:
             for ridx, params in quality_override.items(): used_params.update(params.keys())
+    
     sorted_params = sorted(list(used_params))
     all_qual_cols = qual_ident_cols + sorted_params
+
     for i, col_name in enumerate(all_qual_cols): worksheet_qual.write(table_start_row, i, col_name, quality_header_format); worksheet_qual.set_column(i, i, 22) 
+
     for r_idx in range(param_row_limit):
         xl_row = table_start_row + 1 + r_idx + 1
         worksheet_row = table_start_row + 1 + r_idx
-        worksheet_qual.write_formula(worksheet_row, 0, f"='Offer Sheet'!B{xl_row}", linked_cell_format); worksheet_qual.write_formula(worksheet_row, 1, f"='Offer Sheet'!D{xl_row}", linked_cell_format); worksheet_qual.write_formula(worksheet_row, 2, f"='Offer Sheet'!E{xl_row}", linked_cell_format); worksheet_qual.write_formula(worksheet_row, 3, f"='Offer Sheet'!F{xl_row}", linked_cell_format) 
+        worksheet_qual.write_formula(worksheet_row, 0, f"='Offer Sheet'!B{xl_row}", linked_cell_format) 
+        worksheet_qual.write_formula(worksheet_row, 1, f"='Offer Sheet'!D{xl_row}", linked_cell_format) 
+        worksheet_qual.write_formula(worksheet_row, 2, f"='Offer Sheet'!E{xl_row}", linked_cell_format) 
+        worksheet_qual.write_formula(worksheet_row, 3, f"='Offer Sheet'!F{xl_row}", linked_cell_format) 
         row_custom_data = {}
         if quality_override and r_idx in quality_override: row_custom_data = quality_override[r_idx]
         for i, key in enumerate(sorted_params):
             val = row_custom_data.get(key, DEFAULT_QUALITY_PARAMS.get(key, ""))
             worksheet_qual.write(worksheet_row, 4 + i, val, input_format)
+
     ref_sheet = workbook.add_worksheet('ReferenceData'); ref_sheet.hide()
     def write_list_to_ref(header, data_list, col_idx):
         ref_sheet.write(0, col_idx, header); [ref_sheet.write(i + 1, col_idx, item) for i, item in enumerate(data_list)]; return f"=ReferenceData!${xlsxwriter.utility.xl_col_to_name(col_idx)}$2:${xlsxwriter.utility.xl_col_to_name(col_idx)}${len(data_list) + 1}"
+    
     cat_range = write_list_to_ref("Categories", OFFER_CONSTANTS["Categories"], 0); group_range = write_list_to_ref("Groups", OFFER_CONSTANTS["Product_Groups"], 1); type_range = write_list_to_ref("Types", OFFER_CONSTANTS["Product_Types"], 2); var_range = write_list_to_ref("Varieties", OFFER_CONSTANTS["Varieties"], 3); size_range = write_list_to_ref("Sizes", OFFER_CONSTANTS["Sizes"], 4); pack_range = write_list_to_ref("Packaging", OFFER_CONSTANTS["Packaging"], 5); curr_range = write_list_to_ref("Currencies", OFFER_CONSTANTS["Currencies"], 6); inco_range = write_list_to_ref("Incoterms", OFFER_CONSTANTS["Incoterms"], 7)
+    
     val_end = table_start_row + 1 + 100
     worksheet.data_validation(table_start_row + 1, 0, val_end, 0, {'validate': 'list', 'source': cat_range})
     worksheet.data_validation(table_start_row + 1, 1, val_end, 1, {'validate': 'list', 'source': group_range})
@@ -193,11 +247,12 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
     worksheet.data_validation(table_start_row + 1, 6, val_end, 6, {'validate': 'list', 'source': pack_range})
     worksheet.data_validation(table_start_row + 1, 9, val_end, 9, {'validate': 'list', 'source': curr_range})
     worksheet.data_validation(table_start_row + 1, 10, val_end, 10, {'validate': 'list', 'source': inco_range})
+
     writer.close(); output.seek(0); return output
 
 def render_delete_table(df, table_name, date_col, page_state_key):
     """
-    Renders a table with delete functionality and pagination (Next/Prev 50).
+    Renders a table with delete functionality and pagination.
     """
     if df.empty:
         st.info("No data to show.")
@@ -265,20 +320,31 @@ def render_delete_table(df, table_name, date_col, page_state_key):
     
     st.markdown("---")
     
-    # Navigation Buttons
-    c_prev, c_info, c_next = st.columns([1, 2, 1])
+    # Navigation Buttons (5 Columns: First, Prev, Info, Next, Last)
+    c_first, c_prev, c_info, c_next, c_last = st.columns([1, 1, 2, 1, 1])
     
-    if current_page > 0:
-        if c_prev.button("⬅️ Previous 50", key=f"p_{table_name}"):
-            st.session_state[page_state_key] -= 1
-            st.rerun()
+    # First Page
+    if c_first.button("⏮️ First", key=f"f_{table_name}", disabled=(current_page == 0)):
+        st.session_state[page_state_key] = 0
+        st.rerun()
+
+    # Previous Page
+    if c_prev.button("⬅️ Prev", key=f"p_{table_name}", disabled=(current_page == 0)):
+        st.session_state[page_state_key] -= 1
+        st.rerun()
             
-    c_info.write(f"**Page {current_page + 1} of {total_pages}** (Total: {total_rows} entries)")
+    # Page Info
+    c_info.markdown(f"<div style='text-align: center; line-height: 2.5;'>Page <b>{current_page + 1}</b> of <b>{total_pages}</b></div>", unsafe_allow_html=True)
     
-    if current_page < total_pages - 1:
-        if c_next.button("Next 50 ➡️", key=f"n_{table_name}"):
-            st.session_state[page_state_key] += 1
-            st.rerun()
+    # Next Page
+    if c_next.button("Next ➡️", key=f"n_{table_name}", disabled=(current_page >= total_pages - 1)):
+        st.session_state[page_state_key] += 1
+        st.rerun()
+
+    # Last Page
+    if c_last.button("Last ⏭️", key=f"l_{table_name}", disabled=(current_page >= total_pages - 1)):
+        st.session_state[page_state_key] = total_pages - 1
+        st.rerun()
 
 # ==========================================
 # 🔐 AUTHENTICATION
@@ -422,7 +488,14 @@ else:
                     yaxis=dict(title=dict(text="Metric Tons", font=dict(color="blue")), tickfont=dict(color="blue"), dtick=500), 
                     yaxis2=dict(title=dict(text="Total Value ($)", font=dict(color="green")), tickfont=dict(color="green"), anchor="x", overlaying="y", side="right", dtick=5000000), 
                     yaxis3=dict(title=dict(text="Avg Price ($/kg)", font=dict(color="red")), tickfont=dict(color="red"), anchor="free", overlaying="y", side="right", position=0.95, range=[5, 20]), 
-                    legend=dict(orientation="h", yanchor="top", y=-0.3, xanchor="center", x=0.5),
+                    # --- LEGEND MOVED TO BOTTOM ---
+                    legend=dict(
+                        orientation="h",
+                        yanchor="top",
+                        y=-0.3, # Moves legend below X-axis
+                        xanchor="center",
+                        x=0.5
+                    ),
                     height=600
                 )
                 st.plotly_chart(fig, use_container_width=True)
@@ -452,16 +525,20 @@ else:
             with tabs[3]:
                 st.header("📝 Input Daily Market Prices")
                 
+                # --- STATE MANAGEMENT FOR FETCH ---
                 if 'rate_usd_val' not in st.session_state: st.session_state.rate_usd_val = 34.50
                 if 'rate_eur_val' not in st.session_state: st.session_state.rate_eur_val = 37.20
                 if 'in_usd' not in st.session_state: st.session_state.in_usd = 34.50
                 if 'in_eur' not in st.session_state: st.session_state.in_eur = 37.20
                 
+                # Container for inputs to refresh nicely
                 with st.container():
                     c_date, c_time, c_btn = st.columns([2, 2, 2])
+                    # Changed default value to Yesterday
                     d_date = c_date.date_input("Date", value=datetime.now() - timedelta(days=1))
                     t_time = c_time.time_input("Time (HH:MM)", value=datetime.now().time())
-                    c_btn.write("")
+                    
+                    c_btn.write("") # Spacer so button aligns with inputs
                     if c_btn.button("Fetch exchange rates"):
                         with st.spinner("Fetching historical rates..."):
                             fetched = get_historical_rates(d_date, t_time)
@@ -471,13 +548,17 @@ else:
                                 st.session_state.rate_usd_val = fetched["USD"]
                                 st.session_state.rate_eur_val = fetched["EUR"]
                                 st.success(f"Fetched: USD {fetched['USD']:.4f}, EUR {fetched['EUR']:.4f}")
-                            else: st.warning("Could not fetch historical data. Using defaults/live.")
+                            else:
+                                st.warning("Could not fetch historical data. Using defaults/live.")
                 
                 with st.form("price_input_form"):
                     st.caption("Enter prices for ALL 3 types (TL/kg)."); c1, c2, c3 = st.columns(3); p_tombul = c1.number_input("Tombul", min_value=0.0, step=0.5); p_cakildak = c2.number_input("Cakildak", min_value=0.0, step=0.5); p_levant = c3.number_input("Levant", min_value=0.0, step=0.5)
                     st.markdown("---"); st.write("**Exchange Rates**"); c4, c5 = st.columns(2)
+                    
+                    # Use Session State for values AND keys for immediate update
                     r_usd = c4.number_input("USD/TRY Rate", min_value=0.0, step=0.01, format="%.4f", key="in_usd")
                     r_eur = c5.number_input("EUR/TRY Rate", min_value=0.0, step=0.01, format="%.4f", key="in_eur")
+                    
                     if st.form_submit_button("Save Entry"):
                         if p_tombul > 0:
                             payload = {"date": str(d_date), "price_tombul": p_tombul, "price_cakildak": p_cakildak, "price_levant": p_levant, "rate_usd_try": r_usd, "rate_eur_try": r_eur, "created_by": st.session_state.user['email']}
