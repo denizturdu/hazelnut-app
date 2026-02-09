@@ -7,7 +7,12 @@ import xlsxwriter
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import requests
-import yfinance as yf
+
+# Try to import yfinance, handle if missing
+try:
+    import yfinance as yf
+except ImportError:
+    yf = None
 
 st.set_page_config(page_title="Fındık Fabrikası Yönetimi", layout="wide")
 
@@ -98,6 +103,10 @@ def get_historical_rates(date_obj, time_obj=None):
     Fetches historical exchange rates using yfinance.
     Tries to be smart: if recent, uses hourly data. If old, uses daily close.
     """
+    if yf is None:
+        st.error("yfinance library not found. Please add 'yfinance' to requirements.txt")
+        return None
+
     try:
         # Tickers
         tickers = ["TRY=X", "EURTRY=X"]
@@ -119,30 +128,15 @@ def get_historical_rates(date_obj, time_obj=None):
             
         # Extract Close data
         # Dataframe structure from yf download with multiple tickers can be multi-index
-        # Columns: (Price, Ticker) e.g. ('Close', 'TRY=X')
-        
         try:
             close_data = data['Close']
         except KeyError:
-            # Maybe flat structure if single ticker, but we have 2
             return None
 
-        # If we have time_obj and recent data, try to find nearest row
+        # Fallback / Standard: Take the last available value of the day (Close)
         final_usd = None
         final_eur = None
-        
-        if is_recent and time_obj:
-            # Combine date and time to finding nearest timestamp
-            target_dt = datetime.combine(date_obj, time_obj)
-            # Find index closest to target_dt
-            # yfinance indices are tz-aware usually (UTC or local)
-            # Let's just take the last available row for that day if exact match fails, or simplistic approach: mean
-            # Better: Take the row closest to the hour
-            # Since this is a simple helper, taking the mean of the day or the last close is safer than crashing
-            # Let's take the mean of the day for stability, or the last value
-            pass
-        
-        # Fallback / Standard: Take the last available value of the day (Close)
+
         # For 'TRY=X' (USD/TRY)
         if 'TRY=X' in close_data.columns:
             final_usd = close_data['TRY=X'].iloc[-1]
@@ -429,7 +423,8 @@ else:
                 # Container for inputs to refresh nicely
                 with st.container():
                     c_date, c_time, c_btn = st.columns([2, 2, 2])
-                    d_date = c_date.date_input("Date", value=datetime.now())
+                    # Changed default value to Yesterday
+                    d_date = c_date.date_input("Date", value=datetime.now() - timedelta(days=1))
                     t_time = c_time.time_input("Time (HH:MM)", value=datetime.now().time())
                     
                     if c_btn.button("Fetch the dates currency rates"):
@@ -638,7 +633,7 @@ else:
                                     if st.checkbox("  └ Sube", 11 in cur, key="e_m1_11"): u_mods.append(11)
                                     if st.checkbox("  └ Factory", 12 in cur, key="e_m1_12"): u_mods.append(12)
                                     if st.checkbox("3. Production", 3 in cur, key="e_m3"): u_mods.append(3)
-                                    if st.checkbox("5. Stock", key="e_m5"): u_mods.append(5)
+                                    if st.checkbox("5. Stock", 5 in cur, key="e_m5"): u_mods.append(5)
                                 
                                 with ec2:
                                     st.markdown("**4. Admin**")
