@@ -101,49 +101,58 @@ def get_live_rates():
 def get_historical_rates(date_obj, time_obj=None):
     """
     Fetches historical exchange rates using yfinance.
-    Tries to be smart: if recent, uses hourly data. If old, uses daily close.
+    Uses a robust window to handle weekends and intraday filtering.
     """
     if yf is None:
         st.error("yfinance library not found. Please add 'yfinance' to requirements.txt")
         return None
 
     try:
-        # Tickers
         tickers = ["TRY=X", "EURTRY=X"]
         
-        # Define time range
-        # If we have time, try to get specific window, otherwise daily
-        start_date = date_obj
+        # Widen window to catch weekends/holidays (look back 5 days from target)
+        # End date is exclusive, so +1
         end_date = date_obj + timedelta(days=1)
+        start_date = date_obj - timedelta(days=5)
         
-        # If date is within last 60 days, we can try intraday (e.g. 1h interval)
-        is_recent = (datetime.now().date() - date_obj).days < 59
-        
-        interval = "1h" if is_recent else "1d"
-        
+        # Try intraday first (1h)
+        interval = "1h"
         data = yf.download(tickers, start=start_date, end=end_date, interval=interval, progress=False)
+        
+        if data.empty:
+             # Fallback to daily
+             interval = "1d"
+             data = yf.download(tickers, start=start_date, end=end_date, interval=interval, progress=False)
         
         if data.empty:
             return None
             
         # Extract Close data
-        # Dataframe structure from yf download with multiple tickers can be multi-index
         try:
             close_data = data['Close']
         except KeyError:
             return None
-
-        # Fallback / Standard: Take the last available value of the day (Close)
-        final_usd = None
-        final_eur = None
-
-        # For 'TRY=X' (USD/TRY)
-        if 'TRY=X' in close_data.columns:
-            final_usd = close_data['TRY=X'].iloc[-1]
+            
+        # Filter to only include data BEFORE or AT the user's specific datetime
+        # We need to find the latest available price point relative to user input
         
-        # For 'EURTRY=X' (EUR/TRY)
-        if 'EURTRY=X' in close_data.columns:
-            final_eur = close_data['EURTRY=X'].iloc[-1]
+        target_dt = datetime.combine(date_obj, time_obj) if time_obj else datetime.combine(date_obj, datetime.max.time())
+        
+        # Normalize index to timezone-naive to compare with target_dt
+        close_data.index = close_data.index.tz_localize(None)
+        
+        # Filter rows <= target_dt
+        mask = close_data.index <= target_dt
+        filtered = close_data[mask]
+        
+        if not filtered.empty:
+            last_row = filtered.iloc[-1]
+        else:
+            # If no data before target (rare with 5 day window), take the very first available in window
+            last_row = close_data.iloc[0]
+
+        final_usd = last_row.get('TRY=X')
+        final_eur = last_row.get('EURTRY=X')
             
         return {"USD": float(final_usd) if final_usd else 0.0, "EUR": float(final_eur) if final_eur else 0.0}
 
@@ -630,23 +639,23 @@ else:
                                 
                                 with ec1:
                                     st.markdown("**1. Purchasing**")
-                                    if st.checkbox("Mod 1 Access", 1 in cur, key="e_m1"): u_mods.append(1)
-                                    if st.checkbox("  └ Sube", 11 in cur, key="e_m1_11"): u_mods.append(11)
-                                    if st.checkbox("  └ Factory", 12 in cur, key="e_m1_12"): u_mods.append(12)
-                                    if st.checkbox("3. Production", 3 in cur, key="e_m3"): u_mods.append(3)
-                                    if st.checkbox("5. Stock", 5 in cur, key="e_m5"): u_mods.append(5)
+                                    if st.checkbox("Mod 1 Access", key="e_m1", value=(1 in cur)): u_mods.append(1)
+                                    if st.checkbox("  └ Sube", key="e_m1_11", value=(11 in cur)): u_mods.append(11)
+                                    if st.checkbox("  └ Factory", key="e_m1_12", value=(12 in cur)): u_mods.append(12)
+                                    if st.checkbox("3. Production", key="e_m3", value=(3 in cur)): u_mods.append(3)
+                                    if st.checkbox("5. Stock", key="e_m5", value=(5 in cur)): u_mods.append(5)
                                 
                                 with ec2:
                                     st.markdown("**4. Admin**")
-                                    if st.checkbox("Mod 4 Access", 4 in cur, key="e_m4"): u_mods.append(4)
-                                    if st.checkbox("  └ Users", 41 in cur, key="e_m4_41"): u_mods.append(41)
-                                    if st.checkbox("  └ Materials", 42 in cur, key="e_m4_42"): u_mods.append(42)
-                                    if st.checkbox("  └ Logs", 43 in cur, key="e_m4_43"): u_mods.append(43)
-                                    if st.checkbox("6. Offers", 6 in cur, key="e_m6"): u_mods.append(6)
+                                    if st.checkbox("Mod 4 Access", key="e_m4", value=(4 in cur)): u_mods.append(4)
+                                    if st.checkbox("  └ Users", key="e_m4_41", value=(41 in cur)): u_mods.append(41)
+                                    if st.checkbox("  └ Materials", key="e_m4_42", value=(42 in cur)): u_mods.append(42)
+                                    if st.checkbox("  └ Logs", key="e_m4_43", value=(43 in cur)): u_mods.append(43)
+                                    if st.checkbox("6. Offers", key="e_m6", value=(6 in cur)): u_mods.append(6)
                                     st.markdown("**7. Quality**")
-                                    if st.checkbox("Mod 7 Access", 7 in cur, key="e_m7"): u_mods.append(7)
-                                    if st.checkbox("  └ Create", 71 in cur, key="e_m7_71"): u_mods.append(71)
-                                    if st.checkbox("  └ List", 72 in cur, key="e_m7_72"): u_mods.append(72)
+                                    if st.checkbox("Mod 7 Access", key="e_m7", value=(7 in cur)): u_mods.append(7)
+                                    if st.checkbox("  └ Create", key="e_m7_71", value=(71 in cur)): u_mods.append(71)
+                                    if st.checkbox("  └ List", key="e_m7_72", value=(72 in cur)): u_mods.append(72)
                                 
                                 if st.form_submit_button("Update"):
                                     update_user_permissions(target['id'], new_app, u_mods, new_r)
