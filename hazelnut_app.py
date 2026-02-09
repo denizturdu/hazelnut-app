@@ -30,6 +30,12 @@ MODULE_MAP = {
     6: "6. Offers"                     
 }
 
+TAB_PERMISSIONS = {
+    1: {11: "🏪 Şube Alım (Branch)", 12: "🏭 Fabrika Alım (Factory)"},
+    4: {41: "👥 User Permissions", 42: "📦 Material Definitions", 43: "📜 Login Logs"},
+    7: {71: "➕ Yeni Spesifikasyon", 72: "📜 Listele/Güncelle"}
+}
+
 CUSTOMER_PORTAL_NAME = "🌍 Avella Customer Portal"
 
 # --- HELPER DATA ---
@@ -62,6 +68,7 @@ def get_market_prices():
     except: return pd.DataFrame()
 
 def get_export_figures():
+    """Fetch export figures and calculate derived columns."""
     try:
         response = supabase.table("export_figures").select("*").order("week_ending_date", desc=False).execute()
         df = pd.DataFrame(response.data)
@@ -308,7 +315,15 @@ else:
                 fig.add_trace(go.Scatter(x=df_export['week_ending_date'], y=df_export['total_metric_tons'], name="Metric Tons", yaxis="y1", line=dict(color='blue', width=3)))
                 fig.add_trace(go.Scatter(x=df_export['week_ending_date'], y=df_export['total_export_value_usd'], name="Total Value ($)", yaxis="y2", line=dict(color='green', width=3)))
                 fig.add_trace(go.Scatter(x=df_export['week_ending_date'], y=df_export['avg_kg_price'], name="Avg KG Price ($)", yaxis="y3", line=dict(color='red', width=3, dash='dot')))
-                fig.update_layout(title="Weekly Export Correlations", xaxis=dict(domain=[0.1, 0.9]), yaxis=dict(title="Metric Tons", titlefont=dict(color="blue"), tickfont=dict(color="blue"), dtick=200), yaxis2=dict(title="Total Value ($)", titlefont=dict(color="green"), tickfont=dict(color="green"), anchor="x", overlaying="y", side="right", dtick=5000000), yaxis3=dict(title="Avg Price ($/kg)", titlefont=dict(color="red"), tickfont=dict(color="red"), anchor="free", overlaying="y", side="right", position=0.95, range=[5, 20]), legend=dict(x=0.1, y=1.1, orientation='h'), height=600)
+                fig.update_layout(
+                    title="Weekly Export Correlations", 
+                    xaxis=dict(domain=[0.1, 0.9]), 
+                    yaxis=dict(title="Metric Tons", titlefont=dict(color="blue"), tickfont=dict(color="blue"), dtick=200), 
+                    yaxis2=dict(title="Total Value ($)", titlefont=dict(color="green"), tickfont=dict(color="green"), anchor="x", overlaying="y", side="right", dtick=5000000), 
+                    yaxis3=dict(title="Avg Price ($/kg)", titlefont=dict(color="red"), tickfont=dict(color="red"), anchor="free", overlaying="y", side="right", position=0.95, range=[5, 20]), 
+                    legend=dict(x=0.1, y=1.1, orientation='h'), 
+                    height=600
+                )
                 st.plotly_chart(fig, use_container_width=True)
             else: st.info("No export data available.")
 
@@ -363,7 +378,7 @@ else:
                     with st.form("sube_hazelnut_form"):
                         st.subheader("1. Müstahsil & Tedarikçi"); c1, c2, c3 = st.columns(3); supplier = c1.text_input("Tedarikçi Adı"); sup_type = c2.selectbox("Tedarikçi Tipi", ["Müstahsil", "Tüccar", "Şirket"]); id_num = c3.text_input("TCKN / VKN"); c4, c5, c6 = st.columns(3); city = c4.text_input("İl"); dist_in = c5.text_input("İlçe"); vill_in = c6.text_input("Köy / Mahalle"); c_cont, c_cert = st.columns(2); contact = c_cont.text_input("Telefon No"); cert_status = c_cert.selectbox("Sertifikasyon", ["Yok", "Organik", "Rainforest Alliance", "Avella"]); st.markdown("---"); c7, c8, c9 = st.columns(3); reg_type = c7.selectbox("Alım Şekli", ["Satın Alma", "Emanet"]); location = c8.selectbox("Teslimat Yeri", ["Fabrika", "Tarla", "Avella Şube"]); hazelnut_type = c9.selectbox("Fındık Çeşidi", ["Karışık", "Giresun Tombul", "Çakıldak", "Kara", "Sivri", "Palaz", "Badem", "Foşa", "Yomra"]); st.markdown("---"); price_gross=0.0; price_net_deducted=0.0; val_randiman=0.0; st.subheader("2. Kalite, Miktar ve Fiyatlandırma"); col_q1, col_q2 = st.columns([1, 1])
                         with col_q1: st.markdown("**Fiziksel Analiz (Eksper)**"); w_sample = st.number_input("Kabuklu Numune Ağırlığı (g)", value=250.0); w_good = st.number_input("Sağlam İç (g)", 0.0); w_shriv = st.number_input("Buruşuk İç (g)", 0.0); w_vis_rot = st.number_input("Görünen Çürük (g)", 0.0); w_hid_rot = st.number_input("Gizli Çürük (g)", 0.0); w_tumor = st.number_input("Ur (g)", 0.0); s1, s2 = st.columns(2); w_over = s1.number_input("1. Numara İç - 13 mm üzeri (g)", 0.0); w_under = s2.number_input("Elek Altı İç - 9 mm altı (g)", 0.0); val_moist = st.number_input("Nem (%)", 0.0, 100.0, 5.0)
-                        with col_q2: st.markdown("**Miktar ve Fiyatlandırma**"); net_weight = st.number_input("Toplam Net Ağırlık (kg)", min_value=0.0); st.caption("Paket Adetleri"); p1, p2, p3 = st.columns(3); cnt_nylon = p1.number_input("Naylon", min_value=0); cnt_jute = p2.number_input("Jüt", min_value=0); cnt_bigbag = p3.number_input("Big Bag", min_value=0); st.markdown("---"); 
+                        with col_q2: st.markdown("**Miktar ve Fiyatlandırma**"); net_weight = st.number_input("Toplam Net Ağırlık (kg)", min_value=0.0); st.caption("Paket Adetleri"); p1, p2, p3 = st.columns(3); cnt_nylon = p1.number_input("Naylon", min_value=0); cnt_jute = p2.number_input("Jüt", min_value=0); cnt_bigbag = p3.number_input("Big Bag", min_value=0)
                         if reg_type == "Emanet": st.info("Emanet Alım: Fiyat 0 TL"); price_gross = 0.0
                         else: price_gross = st.number_input("Borsa Fiyatı (50 Randıman)", value=120.0)
                         st.markdown("---"); calc_pressed = st.form_submit_button("🔄 Randıman ve Fiyat Hesapla"); val_randiman = calculate_randiman(w_sample, w_good, w_shriv); net_price_50 = price_gross / 1.0245; unit_price = net_price_50 * (val_randiman / 50.0); total_val = unit_price * net_weight
@@ -426,9 +441,6 @@ else:
                             c1, c2 = st.columns(2); supplier = c1.text_input("Firma"); desc = c2.text_input("Açıklama"); c3, c4 = st.columns(2); qty = c3.number_input("Miktar", 1.0); price = c4.number_input("Tutar", 0.0); 
                             if st.form_submit_button("✅ Kaydet"): insert_record("purchases", {"category": general_type, "supplier": supplier, "item_type": desc, "qty_ordered": qty, "total_value": price, "status": "Pending Arrival", "created_by": st.session_state.user['email']}); st.success("Kaydedildi!")
 
-    # ==========================
-    # MODULE 3: PRODUCTION
-    # ==========================
     elif module == MODULE_MAP[3]:
         st.title("Modül 3: Üretim - Kırma"); 
         try:
@@ -455,7 +467,6 @@ else:
         else:
             tabs = st.tabs(admin_tabs)
             
-            # TAB: USERS
             if "👥 User Permissions" in admin_tabs:
                 with tabs[admin_tabs.index("👥 User Permissions")]:
                     st.subheader("User Permissions")
@@ -537,7 +548,6 @@ else:
                                     update_user_permissions(target['id'], new_app, u_mods, new_r)
                                     st.success("Updated"); time.sleep(1); st.rerun()
 
-            # TAB: MATERIALS
             if "📦 Material Definitions" in admin_tabs:
                 with tabs[admin_tabs.index("📦 Material Definitions")]:
                     cats = ["Ambalaj Malzemeleri", "Bakım Malzemeleri", "Ofis Malzemeleri", "Temizlik Malzemeleri", "Eşantiyon & Hediye", "İş Kıyafetleri", "Gıda ve Mutfak", "Diğer"]; units = ['adet', 'gr', 'kg', 'bobin', 'rulo', 'paket', 'deste', 'palet', 'litre', 'mililitre', 'metreküp', 'desimetreküp', 'santimetreküp', 'metre', 'desimetre', 'santimetre', 'milimetre', 'bigbag', 'kamyon', 'tır', 'tank', 'metrekare', 'santimetrekare', 'ar', 'dekar', 'hektar']; 
@@ -560,7 +570,6 @@ else:
                             target = st.selectbox("Select", [i['item_name'] for i in items]); 
                             if st.button("Delete"): supabase.table("material_definitions").delete().eq("item_name", target).execute(); st.success("Deleted!")
 
-            # TAB: LOGS
             if "📜 Login Logs" in admin_tabs:
                 with tabs[admin_tabs.index("📜 Login Logs")]:
                     try:
@@ -569,16 +578,11 @@ else:
                         else: st.info("No logs.")
                     except: st.error("Error loading logs.")
 
-    # ==========================
-    # MODULE 5: STOCK
-    # ==========================
     elif module == MODULE_MAP[5]:
-        st.title("📦 Stok Takibi")
-        st.info("Stock Content Placeholder")
+        st.title("📦 Stok Takibi"); moves = supabase.table("stock_movements").select("*").execute().data; df = pd.DataFrame(moves)
+        if not df.empty: stock = df.groupby('item_name')['quantity'].sum().reset_index(); st.dataframe(stock, use_container_width=True); st.markdown("---"); st.dataframe(df.sort_values(by='created_at', ascending=False))
+        else: st.info("Hareket yok.")
 
-    # ==========================
-    # MODULE 6: OFFERS
-    # ==========================
     elif module == MODULE_MAP[6]:
         st.title("📄 Offers")
         
