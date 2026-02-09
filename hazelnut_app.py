@@ -269,8 +269,8 @@ else:
         st.title(CUSTOMER_PORTAL_NAME)
         portal_tabs = ["Inshell Hazelnuts and Market Updates", "Weekly Export Figures"]
         if role == 'administrator': 
-            portal_tabs.append("Input Export Figures")
-            portal_tabs.append("Avella Market Price Input (Admin)")
+            portal_tabs.append("Admin: Input Export Figures")
+            portal_tabs.append("Admin: Input Inshell Market Price")
         
         tabs = st.tabs(portal_tabs)
         
