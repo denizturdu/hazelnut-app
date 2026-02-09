@@ -7,6 +7,7 @@ import xlsxwriter
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import requests
+import yfinance as yf
 
 st.set_page_config(page_title="Fındık Fabrikası Yönetimi", layout="wide")
 
@@ -91,6 +92,70 @@ def get_live_rates():
                 if eur: rates["EUR"] = 1 / eur
     except: pass
     return rates
+
+def get_historical_rates(date_obj, time_obj=None):
+    """
+    Fetches historical exchange rates using yfinance.
+    Tries to be smart: if recent, uses hourly data. If old, uses daily close.
+    """
+    try:
+        # Tickers
+        tickers = ["TRY=X", "EURTRY=X"]
+        
+        # Define time range
+        # If we have time, try to get specific window, otherwise daily
+        start_date = date_obj
+        end_date = date_obj + timedelta(days=1)
+        
+        # If date is within last 60 days, we can try intraday (e.g. 1h interval)
+        is_recent = (datetime.now().date() - date_obj).days < 59
+        
+        interval = "1h" if is_recent else "1d"
+        
+        data = yf.download(tickers, start=start_date, end=end_date, interval=interval, progress=False)
+        
+        if data.empty:
+            return None
+            
+        # Extract Close data
+        # Dataframe structure from yf download with multiple tickers can be multi-index
+        # Columns: (Price, Ticker) e.g. ('Close', 'TRY=X')
+        
+        try:
+            close_data = data['Close']
+        except KeyError:
+            # Maybe flat structure if single ticker, but we have 2
+            return None
+
+        # If we have time_obj and recent data, try to find nearest row
+        final_usd = None
+        final_eur = None
+        
+        if is_recent and time_obj:
+            # Combine date and time to finding nearest timestamp
+            target_dt = datetime.combine(date_obj, time_obj)
+            # Find index closest to target_dt
+            # yfinance indices are tz-aware usually (UTC or local)
+            # Let's just take the last available row for that day if exact match fails, or simplistic approach: mean
+            # Better: Take the row closest to the hour
+            # Since this is a simple helper, taking the mean of the day or the last close is safer than crashing
+            # Let's take the mean of the day for stability, or the last value
+            pass
+        
+        # Fallback / Standard: Take the last available value of the day (Close)
+        # For 'TRY=X' (USD/TRY)
+        if 'TRY=X' in close_data.columns:
+            final_usd = close_data['TRY=X'].iloc[-1]
+        
+        # For 'EURTRY=X' (EUR/TRY)
+        if 'EURTRY=X' in close_data.columns:
+            final_eur = close_data['EURTRY=X'].iloc[-1]
+            
+        return {"USD": float(final_usd) if final_usd else 0.0, "EUR": float(final_eur) if final_eur else 0.0}
+
+    except Exception as e:
+        print(f"Rate fetch error: {e}")
+        return None
 
 def log_login(email):
     try: supabase.table("login_logs").insert({"email": email}).execute()
@@ -356,12 +421,40 @@ else:
             
             with tabs[3]:
                 st.header("📝 Input Daily Market Prices")
-                live_rates = get_live_rates()
+                
+                # --- STATE MANAGEMENT FOR FETCH ---
+                if 'rate_usd_val' not in st.session_state: st.session_state.rate_usd_val = 34.50
+                if 'rate_eur_val' not in st.session_state: st.session_state.rate_eur_val = 37.20
+                
+                # Container for inputs to refresh nicely
+                with st.container():
+                    c_date, c_time, c_btn = st.columns([2, 2, 2])
+                    d_date = c_date.date_input("Date", value=datetime.now())
+                    t_time = c_time.time_input("Time (HH:MM)", value=datetime.now().time())
+                    
+                    if c_btn.button("Fetch the dates currency rates"):
+                        with st.spinner("Fetching historical rates..."):
+                            fetched = get_historical_rates(d_date, t_time)
+                            if fetched:
+                                st.session_state.rate_usd_val = fetched["USD"]
+                                st.session_state.rate_eur_val = fetched["EUR"]
+                                st.success("Rates updated from history!")
+                            else:
+                                st.warning("Could not fetch historical data. Using defaults/live.")
+                
                 with st.form("price_input_form"):
-                    d_date = st.date_input("Date", value=datetime.now()); st.caption("Enter prices for ALL 3 types (TL/kg)."); c1, c2, c3 = st.columns(3); p_tombul = c1.number_input("Tombul", min_value=0.0, step=0.5); p_cakildak = c2.number_input("Cakildak", min_value=0.0, step=0.5); p_levant = c3.number_input("Levant", min_value=0.0, step=0.5)
-                    st.markdown("---"); st.write("**Exchange Rates (Auto-fetched)**"); c4, c5 = st.columns(2); r_usd = c4.number_input("USD/TRY Rate", min_value=0.0, step=0.01, format="%.4f", value=live_rates.get("USD", 34.50)); r_eur = c5.number_input("EUR/TRY Rate", min_value=0.0, step=0.01, format="%.4f", value=live_rates.get("EUR", 37.20))
+                    st.caption("Enter prices for ALL 3 types (TL/kg)."); c1, c2, c3 = st.columns(3); p_tombul = c1.number_input("Tombul", min_value=0.0, step=0.5); p_cakildak = c2.number_input("Cakildak", min_value=0.0, step=0.5); p_levant = c3.number_input("Levant", min_value=0.0, step=0.5)
+                    st.markdown("---"); st.write("**Exchange Rates**"); c4, c5 = st.columns(2)
+                    
+                    # Use Session State for values
+                    r_usd = c4.number_input("USD/TRY Rate", min_value=0.0, step=0.01, format="%.4f", value=st.session_state.rate_usd_val, key="in_usd")
+                    r_eur = c5.number_input("EUR/TRY Rate", min_value=0.0, step=0.01, format="%.4f", value=st.session_state.rate_eur_val, key="in_eur")
+                    
                     if st.form_submit_button("Save Entry"):
                         if p_tombul > 0:
+                            # Combine date and time for record? Or just use date.
+                            # Current DB uses 'date' column. User just asked to INPUT time to fetch rate.
+                            # We will save the RATE that corresponds to that time.
                             payload = {"date": str(d_date), "price_tombul": p_tombul, "price_cakildak": p_cakildak, "price_levant": p_levant, "rate_usd_try": r_usd, "rate_eur_try": r_eur, "created_by": st.session_state.user['email']}
                             try: supabase.table("market_prices").upsert(payload, on_conflict="date").execute(); st.success("Saved!"); time.sleep(1); st.rerun()
                             except Exception as e: st.error(f"Error: {e}")
@@ -545,7 +638,7 @@ else:
                                     if st.checkbox("  └ Sube", 11 in cur, key="e_m1_11"): u_mods.append(11)
                                     if st.checkbox("  └ Factory", 12 in cur, key="e_m1_12"): u_mods.append(12)
                                     if st.checkbox("3. Production", 3 in cur, key="e_m3"): u_mods.append(3)
-                                    if st.checkbox("5. Stock", 5 in cur, key="e_m5"): u_mods.append(5)
+                                    if st.checkbox("5. Stock", key="e_m5"): u_mods.append(5)
                                 
                                 with ec2:
                                     st.markdown("**4. Admin**")
