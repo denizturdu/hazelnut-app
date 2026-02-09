@@ -73,6 +73,7 @@ def get_export_figures():
         df = pd.DataFrame(response.data)
         if not df.empty:
             df['week_ending_date'] = pd.to_datetime(df['week_ending_date'])
+            # Calc Avg Price: USD / (Tons * 1000)
             df['avg_kg_price'] = df.apply(lambda x: x['total_export_value_usd'] / (x['total_metric_tons'] * 1000) if x['total_metric_tons'] > 0 else 0, axis=1)
             df['price_change'] = df['avg_kg_price'].diff()
         return df
@@ -348,14 +349,23 @@ else:
             
             with tabs[3]:
                 st.header("📝 Input Daily Market Prices")
+                live_rates = get_live_rates()
                 with st.form("price_input_form"):
                     d_date = st.date_input("Date", value=datetime.now()); st.caption("Enter prices for ALL 3 types (TL/kg)."); c1, c2, c3 = st.columns(3); p_tombul = c1.number_input("Tombul", min_value=0.0, step=0.5); p_cakildak = c2.number_input("Cakildak", min_value=0.0, step=0.5); p_levant = c3.number_input("Levant", min_value=0.0, step=0.5)
-                    st.markdown("---"); st.write("**Exchange Rates (Auto-fetched)**"); c4, c5 = st.columns(2); r_usd = c4.number_input("USD/TRY Rate", min_value=0.0, step=0.01, format="%.4f", value=34.50); r_eur = c5.number_input("EUR/TRY Rate", min_value=0.0, step=0.01, format="%.4f", value=37.20)
+                    st.markdown("---"); st.write("**Exchange Rates (Auto-fetched)**"); c4, c5 = st.columns(2); r_usd = c4.number_input("USD/TRY Rate", min_value=0.0, step=0.01, format="%.4f", value=live_rates.get("USD", 34.50)); r_eur = c5.number_input("EUR/TRY Rate", min_value=0.0, step=0.01, format="%.4f", value=live_rates.get("EUR", 37.20))
                     if st.form_submit_button("Save Entry"):
                         if p_tombul > 0:
                             payload = {"date": str(d_date), "price_tombul": p_tombul, "price_cakildak": p_cakildak, "price_levant": p_levant, "rate_usd_try": r_usd, "rate_eur_try": r_eur, "created_by": st.session_state.user['email']}
                             try: supabase.table("market_prices").upsert(payload, on_conflict="date").execute(); st.success("Saved!"); time.sleep(1); st.rerun()
                             except Exception as e: st.error(f"Error: {e}")
+                
+                # RESTORED HISTORICAL DATA TABLE
+                st.markdown("### 📜 Historical Data Input")
+                df_hist = get_market_prices()
+                if not df_hist.empty:
+                    disp_cols = ["id", "date", "price_tombul", "price_cakildak", "price_levant", "rate_usd_try", "rate_eur_try", "created_by"]
+                    valid_cols = [c for c in disp_cols if c in df_hist.columns]
+                    st.dataframe(df_hist[valid_cols].sort_values(by='date', ascending=False).style.format({"price_tombul": "{:.2f}", "price_cakildak": "{:.2f}", "price_levant": "{:.2f}", "rate_usd_try": "{:.4f}", "rate_eur_try": "{:.4f}"}), use_container_width=True, hide_index=True)
 
     # ==========================
     # MODULE 1: COMBINED
