@@ -316,7 +316,7 @@ else:
                 fig.add_trace(go.Scatter(x=df_export['week_ending_date'], y=df_export['avg_kg_price'], name="Avg KG Price ($)", yaxis="y3", line=dict(color='red', width=3, dash='dot')))
                 fig.update_layout(
                     title=dict(text="Weekly Export Correlations"), 
-                    xaxis=dict(domain=[0.05, 0.9]), 
+                    xaxis=dict(domain=[0.05, 0.9], rangeslider=dict(visible=True), type="date"),
                     yaxis=dict(title=dict(text="Metric Tons", font=dict(color="blue")), tickfont=dict(color="blue"), dtick=200), 
                     yaxis2=dict(title=dict(text="Total Value ($)", font=dict(color="green")), tickfont=dict(color="green"), anchor="x", overlaying="y", side="right", dtick=5000000), 
                     yaxis3=dict(title=dict(text="Avg Price ($/kg)", font=dict(color="red")), tickfont=dict(color="red"), anchor="free", overlaying="y", side="right", position=0.95, range=[5, 20]), 
