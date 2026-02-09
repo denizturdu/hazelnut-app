@@ -419,6 +419,8 @@ else:
                 # --- STATE MANAGEMENT FOR FETCH ---
                 if 'rate_usd_val' not in st.session_state: st.session_state.rate_usd_val = 34.50
                 if 'rate_eur_val' not in st.session_state: st.session_state.rate_eur_val = 37.20
+                if 'in_usd' not in st.session_state: st.session_state.in_usd = 34.50
+                if 'in_eur' not in st.session_state: st.session_state.in_eur = 37.20
                 
                 # Container for inputs to refresh nicely
                 with st.container():
@@ -431,9 +433,11 @@ else:
                         with st.spinner("Fetching historical rates..."):
                             fetched = get_historical_rates(d_date, t_time)
                             if fetched:
+                                st.session_state.in_usd = fetched["USD"]
+                                st.session_state.in_eur = fetched["EUR"]
                                 st.session_state.rate_usd_val = fetched["USD"]
                                 st.session_state.rate_eur_val = fetched["EUR"]
-                                st.success("Rates updated from history!")
+                                st.success(f"Fetched: USD {fetched['USD']:.4f}, EUR {fetched['EUR']:.4f}")
                             else:
                                 st.warning("Could not fetch historical data. Using defaults/live.")
                 
@@ -441,15 +445,12 @@ else:
                     st.caption("Enter prices for ALL 3 types (TL/kg)."); c1, c2, c3 = st.columns(3); p_tombul = c1.number_input("Tombul", min_value=0.0, step=0.5); p_cakildak = c2.number_input("Cakildak", min_value=0.0, step=0.5); p_levant = c3.number_input("Levant", min_value=0.0, step=0.5)
                     st.markdown("---"); st.write("**Exchange Rates**"); c4, c5 = st.columns(2)
                     
-                    # Use Session State for values
-                    r_usd = c4.number_input("USD/TRY Rate", min_value=0.0, step=0.01, format="%.4f", value=st.session_state.rate_usd_val, key="in_usd")
-                    r_eur = c5.number_input("EUR/TRY Rate", min_value=0.0, step=0.01, format="%.4f", value=st.session_state.rate_eur_val, key="in_eur")
+                    # Use Session State for values AND keys for immediate update
+                    r_usd = c4.number_input("USD/TRY Rate", min_value=0.0, step=0.01, format="%.4f", key="in_usd")
+                    r_eur = c5.number_input("EUR/TRY Rate", min_value=0.0, step=0.01, format="%.4f", key="in_eur")
                     
                     if st.form_submit_button("Save Entry"):
                         if p_tombul > 0:
-                            # Combine date and time for record? Or just use date.
-                            # Current DB uses 'date' column. User just asked to INPUT time to fetch rate.
-                            # We will save the RATE that corresponds to that time.
                             payload = {"date": str(d_date), "price_tombul": p_tombul, "price_cakildak": p_cakildak, "price_levant": p_levant, "rate_usd_try": r_usd, "rate_eur_try": r_eur, "created_by": st.session_state.user['email']}
                             try: supabase.table("market_prices").upsert(payload, on_conflict="date").execute(); st.success("Saved!"); time.sleep(1); st.rerun()
                             except Exception as e: st.error(f"Error: {e}")
