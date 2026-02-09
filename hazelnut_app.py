@@ -73,7 +73,6 @@ def get_export_figures():
         df = pd.DataFrame(response.data)
         if not df.empty:
             df['week_ending_date'] = pd.to_datetime(df['week_ending_date'])
-            # Calc Avg Price: USD / (Tons * 1000)
             df['avg_kg_price'] = df.apply(lambda x: x['total_export_value_usd'] / (x['total_metric_tons'] * 1000) if x['total_metric_tons'] > 0 else 0, axis=1)
             df['price_change'] = df['avg_kg_price'].diff()
         return df
@@ -298,7 +297,7 @@ else:
                             elif mode_type == 'USD': y_vals = df_prices[col_name] / df_prices['rate_usd_try']
                             elif mode_type == 'EUR': y_vals = df_prices[col_name] / df_prices['rate_eur_try']
                             fig.add_trace(go.Scatter(x=df_prices['date'], y=y_vals, name=h_type, line=dict(color=colors[h_type], width=3), mode='lines', fill=None))
-                    fig.update_layout(title=title, xaxis=dict(title="Date", rangeslider=dict(visible=True), type="date", range=[start_window, max_db_date]), yaxis=dict(title=dict(text=y_label, font=dict(color="black"))), hovermode="x unified", height=500)
+                    fig.update_layout(title=dict(text=title), xaxis=dict(title="Date", rangeslider=dict(visible=True), type="date", range=[start_window, max_db_date]), yaxis=dict(title=dict(text=y_label, font=dict(color="black"))), hovermode="x unified", height=500)
                     return fig
                 st.plotly_chart(build_chart("1. Inshell Prices (TL/kg)", 'TL', "Price (TL)"), use_container_width=True)
                 st.plotly_chart(build_chart("2. Inshell Prices (USD/kg)", 'USD', "Price (USD)"), use_container_width=True)
@@ -315,11 +314,11 @@ else:
                 fig.add_trace(go.Scatter(x=df_export['week_ending_date'], y=df_export['total_export_value_usd'], name="Total Value ($)", yaxis="y2", line=dict(color='green', width=3)))
                 fig.add_trace(go.Scatter(x=df_export['week_ending_date'], y=df_export['avg_kg_price'], name="Avg KG Price ($)", yaxis="y3", line=dict(color='red', width=3, dash='dot')))
                 fig.update_layout(
-                    title="Weekly Export Correlations", 
-                    xaxis=dict(domain=[0.1, 0.9]), 
-                    yaxis=dict(title="Metric Tons", titlefont=dict(color="blue"), tickfont=dict(color="blue"), dtick=200), 
-                    yaxis2=dict(title="Total Value ($)", titlefont=dict(color="green"), tickfont=dict(color="green"), anchor="x", overlaying="y", side="right", dtick=5000000), 
-                    yaxis3=dict(title="Avg Price ($/kg)", titlefont=dict(color="red"), tickfont=dict(color="red"), anchor="free", overlaying="y", side="right", position=0.95, range=[5, 20]), 
+                    title=dict(text="Weekly Export Correlations"), 
+                    xaxis=dict(domain=[0.05, 0.9]), 
+                    yaxis=dict(title=dict(text="Metric Tons", font=dict(color="blue")), tickfont=dict(color="blue"), dtick=200), 
+                    yaxis2=dict(title=dict(text="Total Value ($)", font=dict(color="green")), tickfont=dict(color="green"), anchor="x", overlaying="y", side="right", dtick=5000000), 
+                    yaxis3=dict(title=dict(text="Avg Price ($/kg)", font=dict(color="red")), tickfont=dict(color="red"), anchor="free", overlaying="y", side="right", position=0.95, range=[5, 20]), 
                     legend=dict(x=0.1, y=1.1, orientation='h'), 
                     height=600
                 )
