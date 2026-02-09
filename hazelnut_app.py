@@ -101,7 +101,7 @@ def get_live_rates():
 def get_historical_rates(date_obj, time_obj=None):
     """
     Fetches historical exchange rates using yfinance.
-    Uses a robust window to handle weekends and intraday filtering.
+    Tries to be smart: if recent, uses hourly data. If old, uses daily close.
     """
     if yf is None:
         st.error("yfinance library not found. Please add 'yfinance' to requirements.txt")
@@ -109,47 +109,29 @@ def get_historical_rates(date_obj, time_obj=None):
 
     try:
         tickers = ["TRY=X", "EURTRY=X"]
-        
-        # Widen window to catch weekends/holidays (look back 5 days from target)
-        # End date is exclusive, so +1
         end_date = date_obj + timedelta(days=1)
         start_date = date_obj - timedelta(days=5)
         
-        # Try intraday first (1h)
         interval = "1h"
         data = yf.download(tickers, start=start_date, end=end_date, interval=interval, progress=False)
         
         if data.empty:
-             # Fallback to daily
              interval = "1d"
              data = yf.download(tickers, start=start_date, end=end_date, interval=interval, progress=False)
         
-        if data.empty:
-            return None
+        if data.empty: return None
             
-        # Extract Close data
-        try:
-            close_data = data['Close']
-        except KeyError:
-            return None
+        try: close_data = data['Close']
+        except KeyError: return None
             
-        # Filter to only include data BEFORE or AT the user's specific datetime
-        # We need to find the latest available price point relative to user input
-        
         target_dt = datetime.combine(date_obj, time_obj) if time_obj else datetime.combine(date_obj, datetime.max.time())
-        
-        # Normalize index to timezone-naive to compare with target_dt
         close_data.index = close_data.index.tz_localize(None)
         
-        # Filter rows <= target_dt
         mask = close_data.index <= target_dt
         filtered = close_data[mask]
         
-        if not filtered.empty:
-            last_row = filtered.iloc[-1]
-        else:
-            # If no data before target (rare with 5 day window), take the very first available in window
-            last_row = close_data.iloc[0]
+        if not filtered.empty: last_row = filtered.iloc[-1]
+        else: last_row = close_data.iloc[0]
 
         final_usd = last_row.get('TRY=X')
         final_eur = last_row.get('EURTRY=X')
@@ -438,7 +420,8 @@ else:
                     d_date = c_date.date_input("Date", value=datetime.now() - timedelta(days=1))
                     t_time = c_time.time_input("Time (HH:MM)", value=datetime.now().time())
                     
-                    if c_btn.button("Fetch the dates currency rates"):
+                    c_btn.write("") # Spacer so button aligns with inputs
+                    if c_btn.button("Fetch exchange rates"):
                         with st.spinner("Fetching historical rates..."):
                             fetched = get_historical_rates(d_date, t_time)
                             if fetched:
