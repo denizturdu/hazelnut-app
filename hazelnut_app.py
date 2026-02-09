@@ -20,7 +20,7 @@ if 'active_quality_row' not in st.session_state: st.session_state.active_quality
 if 'generated_excel_data' not in st.session_state: st.session_state.generated_excel_data = None
 if 'temp_custom_params' not in st.session_state: st.session_state.temp_custom_params = {}
 
-# --- CONSTANTS ---
+# --- CONSTANTS & PERMISSIONS ---
 MODULE_MAP = {
     1: "1. Satın Alma ve Giriş İşlemleri",
     3: "2. Üretim - Kırma",            
@@ -62,16 +62,13 @@ def get_market_prices():
     except: return pd.DataFrame()
 
 def get_export_figures():
-    """Fetch export figures and calculate derived columns."""
     try:
         response = supabase.table("export_figures").select("*").order("week_ending_date", desc=False).execute()
         df = pd.DataFrame(response.data)
         if not df.empty:
             df['week_ending_date'] = pd.to_datetime(df['week_ending_date'])
-            # Calculate Avg Price (USD/kg)
-            # Total Value is in USD, Tons is in Tons. 1 Ton = 1000 kg.
+            # Calc Avg Price: USD / (Tons * 1000)
             df['avg_kg_price'] = df.apply(lambda x: x['total_export_value_usd'] / (x['total_metric_tons'] * 1000) if x['total_metric_tons'] > 0 else 0, axis=1)
-            # Calculate Change
             df['price_change'] = df['avg_kg_price'].diff()
         return df
     except: return pd.DataFrame()
@@ -264,26 +261,22 @@ else:
     # ==========================
     if module == CUSTOMER_PORTAL_NAME:
         st.title(CUSTOMER_PORTAL_NAME)
-        
-        # Determine accessible tabs
         portal_tabs = ["Inshell Hazelnuts and Market Updates", "Weekly Export Figures"]
-        if role == 'administrator':
+        if role == 'administrator': 
             portal_tabs.append("Input Export Figures")
             portal_tabs.append("Avella Market Price Input (Admin)")
         
         tabs = st.tabs(portal_tabs)
         
-        # --- TAB 1: Inshell Graph ---
+        # TAB 1: INSHELL
         with tabs[0]:
             st.header("🌰 Market Updates & Inshell Prices")
             df_prices = get_market_prices()
             live_rates = get_live_rates()
-            rate_usd_live = live_rates.get("USD", 34.0)
-            rate_eur_live = live_rates.get("EUR", 37.0)
             with st.expander("Live Currency Rates (Auto-fetched)", expanded=True):
                 c1, c2 = st.columns(2)
-                c1.metric("USD/TRY", f"{rate_usd_live:.4f}")
-                c2.metric("EUR/TRY", f"{rate_eur_live:.4f}")
+                c1.metric("USD/TRY", f"{live_rates.get('USD', 0):.4f}")
+                c2.metric("EUR/TRY", f"{live_rates.get('EUR', 0):.4f}")
             
             if not df_prices.empty:
                 max_db_date = df_prices['date'].max()
@@ -306,137 +299,50 @@ else:
                 st.plotly_chart(build_chart("3. Inshell Prices (EUR/kg)", 'EUR', "Price (EUR)"), use_container_width=True)
             else: st.info("No market price data available yet.")
 
-        # --- TAB 2: Export Graph ---
+        # TAB 2: EXPORT
         with tabs[1]:
             st.header("🚢 Weekly Export Figures from Turkey")
             df_export = get_export_figures()
             if not df_export.empty:
-                # Create Multi-Axis Chart
                 fig = go.Figure()
-
-                # 1. Metric Tons (Bar or Line? User said Line. Scale ~200 tons dtick)
-                fig.add_trace(go.Scatter(
-                    x=df_export['week_ending_date'], 
-                    y=df_export['total_metric_tons'], 
-                    name="Metric Tons",
-                    yaxis="y1",
-                    line=dict(color='blue', width=3)
-                ))
-
-                # 2. Total Value (Line. Scale ~5M)
-                fig.add_trace(go.Scatter(
-                    x=df_export['week_ending_date'], 
-                    y=df_export['total_export_value_usd'], 
-                    name="Total Value ($)",
-                    yaxis="y2",
-                    line=dict(color='green', width=3)
-                ))
-
-                # 3. Avg Price (Line. Scale 5-20)
-                fig.add_trace(go.Scatter(
-                    x=df_export['week_ending_date'], 
-                    y=df_export['avg_kg_price'], 
-                    name="Avg KG Price ($)",
-                    yaxis="y3",
-                    line=dict(color='red', width=3, dash='dot')
-                ))
-
-                # Layout with 3 Axes
-                fig.update_layout(
-                    title="Weekly Export Correlations (Tons vs Value vs Price)",
-                    xaxis=dict(domain=[0.1, 0.9]), # Make room for axes
-                    yaxis=dict(
-                        title="Metric Tons",
-                        titlefont=dict(color="blue"),
-                        tickfont=dict(color="blue"),
-                        dtick=200 # Requested Scale
-                    ),
-                    yaxis2=dict(
-                        title="Total Value ($)",
-                        titlefont=dict(color="green"),
-                        tickfont=dict(color="green"),
-                        anchor="x",
-                        overlaying="y",
-                        side="right",
-                        dtick=5000000 # Requested Scale
-                    ),
-                    yaxis3=dict(
-                        title="Avg Price ($/kg)",
-                        titlefont=dict(color="red"),
-                        tickfont=dict(color="red"),
-                        anchor="free",
-                        overlaying="y",
-                        side="right",
-                        position=0.95,
-                        range=[5, 20] # Requested Range
-                    ),
-                    legend=dict(x=0.1, y=1.1, orientation='h'),
-                    height=600
-                )
+                fig.add_trace(go.Scatter(x=df_export['week_ending_date'], y=df_export['total_metric_tons'], name="Metric Tons", yaxis="y1", line=dict(color='blue', width=3)))
+                fig.add_trace(go.Scatter(x=df_export['week_ending_date'], y=df_export['total_export_value_usd'], name="Total Value ($)", yaxis="y2", line=dict(color='green', width=3)))
+                fig.add_trace(go.Scatter(x=df_export['week_ending_date'], y=df_export['avg_kg_price'], name="Avg KG Price ($)", yaxis="y3", line=dict(color='red', width=3, dash='dot')))
+                fig.update_layout(title="Weekly Export Correlations", xaxis=dict(domain=[0.1, 0.9]), yaxis=dict(title="Metric Tons", titlefont=dict(color="blue"), tickfont=dict(color="blue"), dtick=200), yaxis2=dict(title="Total Value ($)", titlefont=dict(color="green"), tickfont=dict(color="green"), anchor="x", overlaying="y", side="right", dtick=5000000), yaxis3=dict(title="Avg Price ($/kg)", titlefont=dict(color="red"), tickfont=dict(color="red"), anchor="free", overlaying="y", side="right", position=0.95, range=[5, 20]), legend=dict(x=0.1, y=1.1, orientation='h'), height=600)
                 st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("No export data available yet.")
+            else: st.info("No export data available.")
 
-        # --- TAB 3: Export Input (Admin Only) ---
+        # ADMIN TABS
         if role == 'administrator' and len(tabs) > 2:
             with tabs[2]:
                 st.header("📝 Input Export Figures")
-                
-                # Input Form
                 with st.form("export_input"):
                     c1, c2, c3 = st.columns(3)
                     date_in = c1.date_input("Week Ending Date", value=datetime.now())
                     tons_in = c2.number_input("Total Metric Tons", min_value=0.0, step=100.0)
                     val_in = c3.number_input("Total Export Value (USD)", min_value=0.0, step=100000.0)
-                    
                     if st.form_submit_button("Save Weekly Figure"):
                         if tons_in > 0 and val_in > 0:
                             try:
-                                supabase.table("export_figures").upsert({
-                                    "week_ending_date": str(date_in),
-                                    "total_metric_tons": tons_in,
-                                    "total_export_value_usd": val_in,
-                                    "created_by": st.session_state.user['email']
-                                }, on_conflict="week_ending_date").execute()
-                                st.success("Saved successfully!")
-                                time.sleep(1); st.rerun()
+                                supabase.table("export_figures").upsert({"week_ending_date": str(date_in), "total_metric_tons": tons_in, "total_export_value_usd": val_in, "created_by": st.session_state.user['email']}, on_conflict="week_ending_date").execute()
+                                st.success("Saved!"); time.sleep(1); st.rerun()
                             except Exception as e: st.error(f"Error: {e}")
-                        else:
-                            st.warning("Please enter valid Tons and Value.")
-                
+                        else: st.warning("Please enter valid Tons and Value.")
                 st.markdown("### 📊 Data Table")
-                df_export = get_export_figures()
-                if not df_export.empty:
-                    # Format for display
-                    display_df = df_export.copy()
-                    display_df['week_ending_date'] = display_df['week_ending_date'].dt.strftime('%Y-%m-%d')
-                    
-                    # Columns: Date, Tons, Value, Avg Price, Change
-                    cols_to_show = ['week_ending_date', 'total_metric_tons', 'total_export_value_usd', 'avg_kg_price', 'price_change']
-                    
-                    st.dataframe(
-                        display_df[cols_to_show].sort_values('week_ending_date', ascending=False).style.format({
-                            "total_metric_tons": "{:,.2f}", 
-                            "total_export_value_usd": "${:,.2f}", 
-                            "avg_kg_price": "${:.2f}",
-                            "price_change": "{:+.2f}"
-                        }),
-                        use_container_width=True
-                    )
-
-        # --- TAB 4: Inshell Input (Admin Only) ---
-        if role == 'administrator' and len(tabs) > 3:
+                df_ex = get_export_figures()
+                if not df_ex.empty:
+                    st.dataframe(df_ex[['week_ending_date', 'total_metric_tons', 'total_export_value_usd', 'avg_kg_price', 'price_change']].sort_values('week_ending_date', ascending=False).style.format({"total_metric_tons": "{:,.2f}", "total_export_value_usd": "${:,.2f}", "avg_kg_price": "${:.2f}", "price_change": "{:+.2f}"}), use_container_width=True)
+            
             with tabs[3]:
                 st.header("📝 Input Daily Market Prices")
                 with st.form("price_input_form"):
                     d_date = st.date_input("Date", value=datetime.now()); st.caption("Enter prices for ALL 3 types (TL/kg)."); c1, c2, c3 = st.columns(3); p_tombul = c1.number_input("Tombul", min_value=0.0, step=0.5); p_cakildak = c2.number_input("Cakildak", min_value=0.0, step=0.5); p_levant = c3.number_input("Levant", min_value=0.0, step=0.5)
                     st.markdown("---"); st.write("**Exchange Rates (Auto-fetched)**"); c4, c5 = st.columns(2); r_usd = c4.number_input("USD/TRY Rate", min_value=0.0, step=0.01, format="%.4f", value=34.50); r_eur = c5.number_input("EUR/TRY Rate", min_value=0.0, step=0.01, format="%.4f", value=37.20)
                     if st.form_submit_button("Save Entry"):
-                        if p_tombul > 0 and p_cakildak > 0 and p_levant > 0:
+                        if p_tombul > 0:
                             payload = {"date": str(d_date), "price_tombul": p_tombul, "price_cakildak": p_cakildak, "price_levant": p_levant, "rate_usd_try": r_usd, "rate_eur_try": r_eur, "created_by": st.session_state.user['email']}
-                            try: supabase.table("market_prices").upsert(payload, on_conflict="date").execute(); st.success("Entry Saved Successfully!"); time.sleep(1); st.rerun()
+                            try: supabase.table("market_prices").upsert(payload, on_conflict="date").execute(); st.success("Saved!"); time.sleep(1); st.rerun()
                             except Exception as e: st.error(f"Error: {e}")
-                        else: st.warning("Please fill all price fields.")
 
     # ==========================
     # MODULE 1: COMBINED
@@ -444,20 +350,15 @@ else:
     elif module == MODULE_MAP[1]:
         st.title("1. Satın Alma ve Giriş İşlemleri")
         
-        # PERMISSION CHECK FOR TABS
         tabs_to_show = []
         if has_access(11): tabs_to_show.append("🏪 Şube Alım (Branch)")
         if has_access(12): tabs_to_show.append("🏭 Fabrika Alım (Factory)")
         
-        if not tabs_to_show:
-            st.error("You have access to this module but no specific tabs.")
+        if not tabs_to_show: st.error("You have access to this module but no specific tabs.")
         else:
             tabs = st.tabs(tabs_to_show)
-            
-            # LOGIC FOR TAB 1: SUBE
             if "🏪 Şube Alım (Branch)" in tabs_to_show:
-                idx = tabs_to_show.index("🏪 Şube Alım (Branch)")
-                with tabs[idx]:
+                with tabs[tabs_to_show.index("🏪 Şube Alım (Branch)")]:
                     st.subheader("Şube Fındık Girişi")
                     with st.form("sube_hazelnut_form"):
                         st.subheader("1. Müstahsil & Tedarikçi"); c1, c2, c3 = st.columns(3); supplier = c1.text_input("Tedarikçi Adı"); sup_type = c2.selectbox("Tedarikçi Tipi", ["Müstahsil", "Tüccar", "Şirket"]); id_num = c3.text_input("TCKN / VKN"); c4, c5, c6 = st.columns(3); city = c4.text_input("İl"); dist_in = c5.text_input("İlçe"); vill_in = c6.text_input("Köy / Mahalle"); c_cont, c_cert = st.columns(2); contact = c_cont.text_input("Telefon No"); cert_status = c_cert.selectbox("Sertifikasyon", ["Yok", "Organik", "Rainforest Alliance", "Avella"]); st.markdown("---"); c7, c8, c9 = st.columns(3); reg_type = c7.selectbox("Alım Şekli", ["Satın Alma", "Emanet"]); location = c8.selectbox("Teslimat Yeri", ["Fabrika", "Tarla", "Avella Şube"]); hazelnut_type = c9.selectbox("Fındık Çeşidi", ["Karışık", "Giresun Tombul", "Çakıldak", "Kara", "Sivri", "Palaz", "Badem", "Foşa", "Yomra"]); st.markdown("---"); price_gross=0.0; price_net_deducted=0.0; val_randiman=0.0; st.subheader("2. Kalite, Miktar ve Fiyatlandırma"); col_q1, col_q2 = st.columns([1, 1])
@@ -473,10 +374,8 @@ else:
                         if st.form_submit_button("✅ Şube Girişini Kaydet"):
                             payload = {"created_by": st.session_state.user['email'], "status": "Pending Arrival", "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type, "id_number": id_num, "city": city, "district": dist_in, "village": vill_in, "phone_number": contact, "cert_status": cert_status, "reg_type": reg_type, "location": location, "item_type": hazelnut_type, "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num, "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount, "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag, "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv, "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over, "moisture": val_moist, "calculated_randiman": val_randiman, "gross_price_50": price_gross, "net_price_50": net_price_50, "actual_unit_price": unit_price}; insert_record("purchases", payload); st.success("Şube Girişi Kaydedildi!")
 
-            # LOGIC FOR TAB 2: FABRIKA
             if "🏭 Fabrika Alım (Factory)" in tabs_to_show:
-                idx = tabs_to_show.index("🏭 Fabrika Alım (Factory)")
-                with tabs[idx]:
+                with tabs[tabs_to_show.index("🏭 Fabrika Alım (Factory)")]:
                     st.subheader("Fabrika Alım Operasyonları")
                     f_tab1, f_tab2, f_tab3 = st.tabs(["🌰 Fındık Alımı", "📦 Malzeme Alımı", "⚙️ Makine & Hizmet"])
                     with f_tab1:
@@ -527,6 +426,9 @@ else:
                             c1, c2 = st.columns(2); supplier = c1.text_input("Firma"); desc = c2.text_input("Açıklama"); c3, c4 = st.columns(2); qty = c3.number_input("Miktar", 1.0); price = c4.number_input("Tutar", 0.0); 
                             if st.form_submit_button("✅ Kaydet"): insert_record("purchases", {"category": general_type, "supplier": supplier, "item_type": desc, "qty_ordered": qty, "total_value": price, "status": "Pending Arrival", "created_by": st.session_state.user['email']}); st.success("Kaydedildi!")
 
+    # ==========================
+    # MODULE 3: PRODUCTION
+    # ==========================
     elif module == MODULE_MAP[3]:
         st.title("Modül 3: Üretim - Kırma"); 
         try:
@@ -544,55 +446,43 @@ else:
     elif module == MODULE_MAP[4]:
         st.title("🛠️ Administrator Settings")
         
-        # PERMISSION CHECK FOR ADMIN TABS
         admin_tabs = []
         if has_access(41): admin_tabs.append("👥 User Permissions")
         if has_access(42): admin_tabs.append("📦 Material Definitions")
         if has_access(43): admin_tabs.append("📜 Login Logs")
         
-        if not admin_tabs:
-             st.warning("No tabs available.")
+        if not admin_tabs: st.warning("No tabs available.")
         else:
             tabs = st.tabs(admin_tabs)
             
-            # USER PERMISSIONS TAB
+            # TAB: USERS
             if "👥 User Permissions" in admin_tabs:
                 with tabs[admin_tabs.index("👥 User Permissions")]:
                     st.subheader("User Permissions")
-                    
                     with st.expander("➕ Create User"):
                         with st.form("new_user"):
                             email = st.text_input("Email")
                             pwd = st.text_input("Password", type="password")
                             role_sel = st.selectbox("Role", ["employee", "administrator"])
-                            
                             st.write("Permissions:")
-                            # DYNAMIC CHECKBOX TREE
                             c1, c2 = st.columns(2)
                             new_mods = []
                             
-                            # MOD 1
                             with c1:
                                 st.markdown("**1. Purchasing**")
                                 if st.checkbox("Mod 1 Access", key="c_m1"): new_mods.append(1)
                                 if st.checkbox("  └ Tab: Sube", key="c_m1_11"): new_mods.append(11)
                                 if st.checkbox("  └ Tab: Factory", key="c_m1_12"): new_mods.append(12)
-                            
-                            # MOD 4
+                                if st.checkbox("3. Production", key="c_m3"): new_mods.append(3)
+                                if st.checkbox("5. Stock", key="c_m5"): new_mods.append(5)
+
                             with c2:
                                 st.markdown("**4. Admin**")
                                 if st.checkbox("Mod 4 Access", key="c_m4"): new_mods.append(4)
                                 if st.checkbox("  └ Tab: Users", key="c_m4_41"): new_mods.append(41)
                                 if st.checkbox("  └ Tab: Materials", key="c_m4_42"): new_mods.append(42)
                                 if st.checkbox("  └ Tab: Logs", key="c_m4_43"): new_mods.append(43)
-                                
-                            # For simple modules, just main access
-                            with c1:
-                                if st.checkbox("3. Production", key="c_m3"): new_mods.append(3)
-                                if st.checkbox("5. Stock", key="c_m5"): new_mods.append(5)
                                 if st.checkbox("6. Offers", key="c_m6"): new_mods.append(6)
-                            
-                            with c2:
                                 st.markdown("**7. Quality**")
                                 if st.checkbox("Mod 7 Access", key="c_m7"): new_mods.append(7)
                                 if st.checkbox("  └ Tab: Create", key="c_m7_71"): new_mods.append(71)
@@ -601,19 +491,14 @@ else:
                             if st.form_submit_button("Create"):
                                 success, msg = register_user(email, pwd, role=role_sel)
                                 if success:
-                                    # Fetch ID and update
-                                    time.sleep(1)
-                                    new_user_data = supabase.table("users").select("id").eq("email", email).execute()
+                                    time.sleep(1); new_user_data = supabase.table("users").select("id").eq("email", email).execute()
                                     if new_user_data.data:
                                         uid = new_user_data.data[0]['id']
                                         update_user_permissions(uid, True, new_mods, role_sel)
-                                        st.success("User Created")
-                                        time.sleep(1)
-                                        st.rerun()
+                                        st.success("User Created"); time.sleep(1); st.rerun()
                                 else: st.error(msg)
                     
                     st.markdown("---")
-                    # EDIT EXISTING
                     all_users = get_all_users()
                     if all_users:
                         user_list = {u['email']: u for u in all_users}
@@ -624,10 +509,7 @@ else:
                                 st.write(f"Editing: {target['email']}")
                                 new_r = st.selectbox("Role", ["employee", "administrator"], index=["employee", "administrator"].index(target['role']) if target['role'] in ["employee", "administrator"] else 0)
                                 new_app = st.checkbox("Approved", target['is_approved'])
-                                
-                                cur = target.get('allowed_modules', [])
-                                if cur is None: cur = []
-                                
+                                cur = target.get('allowed_modules', []) or []
                                 u_mods = []
                                 ec1, ec2 = st.columns(2)
                                 
@@ -636,7 +518,6 @@ else:
                                     if st.checkbox("Mod 1 Access", 1 in cur, key="e_m1"): u_mods.append(1)
                                     if st.checkbox("  └ Sube", 11 in cur, key="e_m1_11"): u_mods.append(11)
                                     if st.checkbox("  └ Factory", 12 in cur, key="e_m1_12"): u_mods.append(12)
-                                    
                                     if st.checkbox("3. Production", 3 in cur, key="e_m3"): u_mods.append(3)
                                     if st.checkbox("5. Stock", 5 in cur, key="e_m5"): u_mods.append(5)
                                 
@@ -646,9 +527,7 @@ else:
                                     if st.checkbox("  └ Users", 41 in cur, key="e_m4_41"): u_mods.append(41)
                                     if st.checkbox("  └ Materials", 42 in cur, key="e_m4_42"): u_mods.append(42)
                                     if st.checkbox("  └ Logs", 43 in cur, key="e_m4_43"): u_mods.append(43)
-                                    
                                     if st.checkbox("6. Offers", 6 in cur, key="e_m6"): u_mods.append(6)
-                                    
                                     st.markdown("**7. Quality**")
                                     if st.checkbox("Mod 7 Access", 7 in cur, key="e_m7"): u_mods.append(7)
                                     if st.checkbox("  └ Create", 71 in cur, key="e_m7_71"): u_mods.append(71)
@@ -656,46 +535,264 @@ else:
                                 
                                 if st.form_submit_button("Update"):
                                     update_user_permissions(target['id'], new_app, u_mods, new_r)
-                                    st.success("Updated")
-                                    time.sleep(1)
-                                    st.rerun()
+                                    st.success("Updated"); time.sleep(1); st.rerun()
 
-            # MATERIALS TAB
+            # TAB: MATERIALS
             if "📦 Material Definitions" in admin_tabs:
-                 with tabs[admin_tabs.index("📦 Material Definitions")]:
-                     st.write("Material Logic Here (Same as before)")
+                with tabs[admin_tabs.index("📦 Material Definitions")]:
+                    cats = ["Ambalaj Malzemeleri", "Bakım Malzemeleri", "Ofis Malzemeleri", "Temizlik Malzemeleri", "Eşantiyon & Hediye", "İş Kıyafetleri", "Gıda ve Mutfak", "Diğer"]; units = ['adet', 'gr', 'kg', 'bobin', 'rulo', 'paket', 'deste', 'palet', 'litre', 'mililitre', 'metreküp', 'desimetreküp', 'santimetreküp', 'metre', 'desimetre', 'santimetre', 'milimetre', 'bigbag', 'kamyon', 'tır', 'tank', 'metrekare', 'santimetrekare', 'ar', 'dekar', 'hektar']; 
+                    with st.expander("View List"): data = supabase.table("material_definitions").select("*").execute().data; st.dataframe(pd.DataFrame(data), use_container_width=True)
+                    st.write("### ➕ Add / ✏️ Edit / 🗑️ Delete"); action = st.radio("Action", ["Add", "Edit", "Delete"], horizontal=True)
+                    if action == "Add":
+                        with st.form("add_mat"): 
+                            c1, c2 = st.columns(2); cat = c1.selectbox("Category", cats); name = c2.text_input("Name"); u1, u2 = st.columns(2); unit = u1.selectbox("Unit", units); uq = u2.number_input("Unit Qty", 1.0); nt = st.text_area("Notes"); 
+                            if st.form_submit_button("Save"): insert_record("material_definitions", {"category": cat, "item_name": name, "sales_unit": unit, "unit_quantity": uq, "notes": nt}); st.success("Added!")
+                    elif action == "Edit":
+                        sel_cat = st.selectbox("Category", cats); items = supabase.table("material_definitions").select("*").eq("category", sel_cat).execute().data
+                        if items:
+                            target = st.selectbox("Material", [i['item_name'] for i in items]); row = next(i for i in items if i['item_name'] == target); 
+                            with st.form("edit_mat"): 
+                                new_name = st.text_input("Name", row['item_name']); 
+                                if st.form_submit_button("Update"): supabase.table("material_definitions").update({"item_name": new_name}).eq("id", row['id']).execute(); st.success("Updated!")
+                    elif action == "Delete":
+                        sel_cat = st.selectbox("Category (Delete)", cats); items = supabase.table("material_definitions").select("*").eq("category", sel_cat).execute().data
+                        if items:
+                            target = st.selectbox("Select", [i['item_name'] for i in items]); 
+                            if st.button("Delete"): supabase.table("material_definitions").delete().eq("item_name", target).execute(); st.success("Deleted!")
 
-            # LOGS TAB
+            # TAB: LOGS
             if "📜 Login Logs" in admin_tabs:
-                 with tabs[admin_tabs.index("📜 Login Logs")]:
-                     st.write("Logs Logic Here (Same as before)")
+                with tabs[admin_tabs.index("📜 Login Logs")]:
+                    try:
+                        logs = supabase.table("login_logs").select("*").order("login_at", desc=True).limit(1000).execute().data
+                        if logs: st.dataframe(pd.DataFrame(logs))
+                        else: st.info("No logs.")
+                    except: st.error("Error loading logs.")
 
     # ==========================
-    # MODULE 5
+    # MODULE 5: STOCK
     # ==========================
     elif module == MODULE_MAP[5]:
         st.title("📦 Stok Takibi")
-        st.info("Stock Content")
+        st.info("Stock Content Placeholder")
 
     # ==========================
-    # MODULE 6
+    # MODULE 6: OFFERS
     # ==========================
     elif module == MODULE_MAP[6]:
         st.title("📄 Offers")
-        st.info("Offers Content")
+        
+        if st.session_state.offer_step == "menu":
+            if st.button("➕ Create New Offer", type="primary"):
+                st.session_state.offer_step = "create"; st.rerun()
+            st.info("Click above to start a new offer.")
+
+        elif st.session_state.offer_step == "create":
+            if st.button("⬅️ Back to Menu"):
+                st.session_state.offer_step = "menu"; st.rerun()
+            st.markdown("### 📝 Offer Details & Product List")
+            with st.container():
+                c1, c2, c3 = st.columns(3)
+                date_val = c1.date_input("Date", value=datetime.now())
+                offer_no = c2.text_input("Offer No")
+                validity = c3.text_input("Validity")
+                c4, c5, c6 = st.columns(3)
+                customer = c4.text_input("Customer Name"); cust_ref = c5.text_input("Cust. Ref"); avella_ref = c6.text_input("Avella Ref")
+                c7, c8 = st.columns(2)
+                payment = c7.text_input("Payment Terms"); delivery = c8.text_input("Delivery Address")
+            st.markdown("---")
+            if 'offer_rows' not in st.session_state:
+                st.session_state.offer_rows = pd.DataFrame([{"Quality Parameters": "Default", "Category": "Nuts", "Product Group": "Hazelnuts", "Total Contract Volume (kg)": 0, "Type/Process": "Natural Kernels - Whole", "Variety": "Levant", "Size": "11-13mm", "Packaging": "Bigbag", "Net Wgt (kg)": 1000, "Price": 0.0, "Currency": "USD", "Incoterms": "FCA", "Place of Delivery": "Istanbul", "Minimum Order Quantity (kg)": 1000, "Shipment Schedule": "Prompt", "Payment Terms": "CAD"}],)
+            
+            column_config = {
+                "Quality Parameters": st.column_config.SelectboxColumn("Quality Parameters", options=["Default", "Edit...", "Updated"], required=True, width="small", help="Select 'Edit...' to modify"),
+                "Category": st.column_config.SelectboxColumn("Category", options=OFFER_CONSTANTS["Categories"], required=True),
+                "Product Group": st.column_config.SelectboxColumn("Group", options=OFFER_CONSTANTS["Product_Groups"], required=True),
+                "Type/Process": st.column_config.SelectboxColumn("Type", options=OFFER_CONSTANTS["Product_Types"], required=True, width="medium"),
+                "Variety": st.column_config.SelectboxColumn("Variety", options=OFFER_CONSTANTS["Varieties"], required=True),
+                "Size": st.column_config.SelectboxColumn("Size", options=OFFER_CONSTANTS["Sizes"], required=True),
+                "Packaging": st.column_config.SelectboxColumn("Packaging", options=OFFER_CONSTANTS["Packaging"], required=True, width="medium"),
+                "Currency": st.column_config.SelectboxColumn("Currency", options=OFFER_CONSTANTS["Currencies"], required=True, width="small"),
+                "Incoterms": st.column_config.SelectboxColumn("Incoterms", options=OFFER_CONSTANTS["Incoterms"], required=True, width="small"),
+                "Total Contract Volume (kg)": st.column_config.NumberColumn("Vol (kg)", min_value=0),
+                "Net Wgt (kg)": st.column_config.NumberColumn("Net Wgt", min_value=0),
+                "Price": st.column_config.NumberColumn("Price", min_value=0.0, format="%.2f"),
+            }
+            edited_df = st.data_editor(st.session_state.offer_rows, column_config=column_config, num_rows="dynamic", use_container_width=True, key="offer_editor")
+            rows_to_edit = edited_df.index[edited_df["Quality Parameters"] == "Edit..."].tolist()
+            if rows_to_edit:
+                target_idx = rows_to_edit[0]
+                prev_status = "Updated" if target_idx in st.session_state.offer_quality_data else "Default"
+                edited_df.at[target_idx, "Quality Parameters"] = prev_status
+                st.session_state.offer_rows = edited_df
+                st.session_state.active_quality_row = target_idx
+                st.session_state.offer_step = "edit_quality"
+                st.rerun()
+            else:
+                st.session_state.offer_rows = edited_df
+            st.markdown("---")
+            if st.button("Prepare & Export Offer", type="primary"):
+                header_payload = {"date": date_val, "offer_no": offer_no, "validity": validity, "customer": customer, "cust_ref": cust_ref, "avella_ref": avella_ref, "payment": payment, "delivery": delivery}
+                with st.spinner("Generating Excel..."):
+                    excel_data = generate_offer_excel(header_data=header_payload, product_df=st.session_state.offer_rows, quality_override=st.session_state.offer_quality_data)
+                    st.session_state.generated_excel_data = excel_data
+                    st.success("Offer Generated!")
+            if st.session_state.generated_excel_data:
+                st.download_button(label="📥 Download Excel File", data=st.session_state.generated_excel_data, file_name=f"Avella_Offer_{offer_no if offer_no else 'Draft'}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+        elif st.session_state.offer_step == "edit_quality":
+            row_idx = st.session_state.active_quality_row
+            if row_idx is None or row_idx >= len(st.session_state.offer_rows):
+                st.session_state.offer_step = "create"; st.rerun()
+            row_data = st.session_state.offer_rows.iloc[row_idx]
+            current_prod_type = row_data['Type/Process']
+            st.warning(f"🔧 Editing Quality Parameters for Row #{row_idx + 1}")
+            st.write(f"**Product:** {row_data['Product Group']} | {current_prod_type} | {row_data['Variety']} | {row_data['Size']}")
+            
+            all_specs = get_product_specs()
+            relevant_specs = [s for s in all_specs if s.get('product_type') == current_prod_type]
+            spec_options = {f"{s['spec_name']} ({s['product_type']})": s['parameters'] for s in all_specs}
+            display_keys = [f"{s['spec_name']} ({s['product_type']})" for s in relevant_specs]
+            other_keys = [k for k in spec_options.keys() if k not in display_keys]
+            final_options = ["(Select to Load)"] + display_keys + ["--- Other Types ---"] + other_keys
+            selected_template = st.selectbox("📥 Load from Specification Template", final_options)
+            
+            if selected_template and selected_template not in ["(Select to Load)", "--- Other Types ---"]:
+                st.session_state.offer_quality_data[row_idx] = spec_options[selected_template]
+                st.success(f"Loaded template: {selected_template}")
+            
+            current_vals = st.session_state.offer_quality_data.get(row_idx, DEFAULT_QUALITY_PARAMS.copy())
+            
+            with st.form("quality_form"):
+                cols = st.columns(4)
+                new_vals = {}
+                all_keys = list(set(list(DEFAULT_QUALITY_PARAMS.keys()) + list(current_vals.keys())))
+                def sort_key(k):
+                    if k in DEFAULT_QUALITY_PARAMS: return list(DEFAULT_QUALITY_PARAMS.keys()).index(k)
+                    return 999
+                all_keys.sort(key=sort_key)
+                for i, k in enumerate(all_keys):
+                    col = cols[i % 4]
+                    default_val = current_vals.get(k, "")
+                    if isinstance(default_val, (int, float)): new_vals[k] = col.number_input(k, value=float(default_val))
+                    else: new_vals[k] = col.text_input(k, value=str(default_val))
+                st.markdown("---")
+                if st.form_submit_button("✅ Save Parameters & Return"):
+                    st.session_state.offer_quality_data[row_idx] = new_vals
+                    st.session_state.offer_rows.at[row_idx, "Quality Parameters"] = "Updated"
+                    st.session_state.offer_step = "create"; st.rerun()
 
     # ==========================
-    # MODULE 7
+    # MODULE 7: QUALITY
     # ==========================
-    elif module == MODULE_MAP[7]:
-        st.title("🛡️ Kalite Kontrol")
+    elif module == MODULE_MAP.get(7): 
+        st.title("🛡️ Kalite Kontrol & Spesifikasyonlar")
         
         q_tabs = []
-        if has_access(71): q_tabs.append("➕ Create Spec")
-        if has_access(72): q_tabs.append("📜 List/Update")
+        if has_access(71): q_tabs.append("➕ Yeni Spesifikasyon")
+        if has_access(72): q_tabs.append("📜 Listele/Güncelle")
         
-        if q_tabs:
+        if not q_tabs: st.warning("No tabs available.")
+        else:
             tabs = st.tabs(q_tabs)
-            if "➕ Create Spec" in q_tabs:
-                with tabs[q_tabs.index("➕ Create Spec")]:
-                    st.write("Create Spec Form...")
+            
+            if "➕ Yeni Spesifikasyon" in q_tabs:
+                with tabs[q_tabs.index("➕ Yeni Spesifikasyon")]:
+                    st.markdown("### Yeni Ürün Spesifikasyonu Tanımla")
+                    with st.expander("Özel Parametre Ekle (İsteğe Bağlı)"):
+                        c_custom1, c_custom2, c_custom3, c_custom4 = st.columns([2, 2, 2, 1])
+                        new_p_name = c_custom1.text_input("Parametre Adı")
+                        new_p_type = c_custom2.text_input("Parametre Tipi (Bilgi)")
+                        new_p_val = c_custom3.text_input("Varsayılan Değer")
+                        if c_custom4.button("Ekle"):
+                            if new_p_name:
+                                st.session_state.temp_custom_params[new_p_name] = new_p_val
+                                st.success(f"{new_p_name} eklendi")
+                            else: st.error("İsim gerekli")
+                    
+                    if st.session_state.temp_custom_params:
+                        st.write("Eklenen Özel Parametreler:", st.session_state.temp_custom_params)
+
+                    with st.form("new_spec_form"):
+                        c1, c2 = st.columns(2)
+                        spec_name = c1.text_input("Spesifikasyon Adı (ör. 'Std Naturel 11-13')")
+                        prod_type = c2.selectbox("İlgili Ürün Tipi", OFFER_CONSTANTS["Product_Types"])
+                        st.markdown("---")
+                        st.write("**Varsayılan Kalite Parametreleri**")
+                        cols = st.columns(4)
+                        spec_vals = {}
+                        keys = list(DEFAULT_QUALITY_PARAMS.keys())
+                        for i, k in enumerate(keys):
+                            col = cols[i % 4]
+                            default_val = DEFAULT_QUALITY_PARAMS[k]
+                            if isinstance(default_val, (int, float)):
+                                spec_vals[k] = col.number_input(k, value=float(default_val))
+                            else:
+                                spec_vals[k] = col.text_input(k, value=str(default_val))
+                        
+                        st.markdown("---")
+                        if st.form_submit_button("💾 Spesifikasyonu Kaydet"):
+                            if spec_name:
+                                existing = supabase.table("product_specs").select("id").eq("spec_name", spec_name).execute()
+                                if existing.data:
+                                    st.error("Bu isimde bir spesifikasyon zaten var. Değişiklikleri 'Spesifikasyon Listesi' sekmesinden yapmalısınız.")
+                                else:
+                                    final_params = spec_vals.copy()
+                                    final_params.update(st.session_state.temp_custom_params)
+                                    payload = {"spec_name": spec_name, "product_type": prod_type, "parameters": final_params, "created_by": st.session_state.user['email']}
+                                    try:
+                                        insert_record("product_specs", payload)
+                                        st.success("Spesifikasyon Kaydedildi!")
+                                        st.session_state.temp_custom_params = {}
+                                    except Exception as e:
+                                        st.error(f"Hata: {e}")
+                            else: st.error("Spesifikasyon Adı gereklidir.")
+
+            if "📜 Listele/Güncelle" in q_tabs:
+                with tabs[q_tabs.index("📜 Listele/Güncelle")]:
+                    st.markdown("### Mevcut Spesifikasyonlar")
+                    specs = get_product_specs()
+                    if specs:
+                        df_specs = pd.DataFrame(specs)
+                        st.dataframe(df_specs[["spec_name", "product_type", "created_by", "created_at"]], use_container_width=True)
+                        st.markdown("---")
+                        st.markdown("### ✏️ Spesifikasyonu Güncelle")
+                        selected_spec_name_update = st.selectbox("Güncellenecek Spesifikasyonu Seç", ["(Seçiniz)"] + df_specs["spec_name"].tolist())
+                        
+                        if selected_spec_name_update != "(Seçiniz)":
+                            target_spec = next(s for s in specs if s["spec_name"] == selected_spec_name_update)
+                            current_params = target_spec["parameters"]
+                            st.info(f"Güncelleniyor: **{target_spec['spec_name']}**")
+                            
+                            with st.expander("Bu Spesifikasyona Yeni Parametre Ekle"):
+                                uc1, uc2 = st.columns(2)
+                                up_name = uc1.text_input("Yeni Parametre Adı")
+                                up_val = uc2.text_input("Yeni Parametre Değeri")
+                                if st.button("Forma Ekle"):
+                                    if up_name:
+                                        current_params[up_name] = up_val
+                                        st.rerun()
+
+                            with st.form("update_spec_form"):
+                                u_cols = st.columns(4)
+                                updated_vals = {}
+                                u_keys = list(current_params.keys())
+                                for i, k in enumerate(u_keys):
+                                    col = u_cols[i % 4]
+                                    val = current_params[k]
+                                    if isinstance(val, (int, float)):
+                                        updated_vals[k] = col.number_input(k, value=float(val))
+                                    elif isinstance(val, str) and val.replace('.','',1).isdigit():
+                                        try: updated_vals[k] = col.number_input(k, value=float(val))
+                                        except: updated_vals[k] = col.text_input(k, value=val)
+                                    else:
+                                        updated_vals[k] = col.text_input(k, value=str(val))
+                                
+                                st.markdown("---")
+                                if st.form_submit_button("💾 Spesifikasyonu Güncelle"):
+                                    try:
+                                        supabase.table("product_specs").update({"parameters": updated_vals}).eq("id", target_spec['id']).execute()
+                                        st.success("Spesifikasyon Başarıyla Güncellendi!")
+                                        time.sleep(1); st.rerun()
+                                    except Exception as e: st.error(f"Güncelleme Hatası: {e}")
+                    else: st.info("Henüz tanımlı spesifikasyon yok.")
