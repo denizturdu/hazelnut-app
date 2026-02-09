@@ -26,7 +26,9 @@ if 'active_quality_row' not in st.session_state: st.session_state.active_quality
 if 'generated_excel_data' not in st.session_state: st.session_state.generated_excel_data = None
 if 'temp_custom_params' not in st.session_state: st.session_state.temp_custom_params = {}
 if 'delete_confirm_id' not in st.session_state: st.session_state.delete_confirm_id = None
-if 'delete_table_target' not in st.session_state: st.session_state.delete_table_target = None
+# Pagination States
+if 'page_export' not in st.session_state: st.session_state.page_export = 0
+if 'page_market' not in st.session_state: st.session_state.page_market = 0
 
 # --- CONSTANTS & PERMISSIONS ---
 MODULE_MAP = {
@@ -100,7 +102,7 @@ def get_live_rates():
     return rates
 
 def get_historical_rates(date_obj, time_obj=None):
-    if yf is None: st.error("yfinance missing"); return None
+    if yf is None: st.error("yfinance library not found. Please add 'yfinance' to requirements.txt"); return None
     try:
         tickers = ["TRY=X", "EURTRY=X"]
         end_date = date_obj + timedelta(days=1)
@@ -121,7 +123,7 @@ def get_historical_rates(date_obj, time_obj=None):
         else: last_row = close_data.iloc[0]
         final_usd = last_row.get('TRY=X'); final_eur = last_row.get('EURTRY=X')
         return {"USD": float(final_usd) if final_usd else 0.0, "EUR": float(final_eur) if final_eur else 0.0}
-    except Exception as e: print(f"Rate error: {e}"); return None
+    except Exception as e: print(f"Rate fetch error: {e}"); return None
 
 def log_login(email):
     try: supabase.table("login_logs").insert({"email": email}).execute()
@@ -193,40 +195,48 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
     worksheet.data_validation(table_start_row + 1, 10, val_end, 10, {'validate': 'list', 'source': inco_range})
     writer.close(); output.seek(0); return output
 
-def render_delete_table(df, table_name, date_col):
+def render_delete_table(df, table_name, date_col, page_state_key):
     """
-    Renders a table with a delete icon column.
-    Handles 'Are you sure?' confirmation.
-    Shows last 50 entries.
+    Renders a table with delete functionality and pagination (Next/Prev 50).
     """
     if df.empty:
         st.info("No data to show.")
         return
 
-    # Sort descending by date
-    df = df.sort_values(by=date_col, ascending=False).head(50)
+    # Sort descending
+    df = df.sort_values(by=date_col, ascending=False).reset_index(drop=True)
+    
+    # Pagination Logic
+    ROWS_PER_PAGE = 50
+    total_rows = len(df)
+    total_pages = max(1, (total_rows - 1) // ROWS_PER_PAGE + 1)
+    
+    # Validate Page Number
+    if st.session_state[page_state_key] >= total_pages: st.session_state[page_state_key] = total_pages - 1
+    if st.session_state[page_state_key] < 0: st.session_state[page_state_key] = 0
+    current_page = st.session_state[page_state_key]
+    
+    start_idx = current_page * ROWS_PER_PAGE
+    end_idx = start_idx + ROWS_PER_PAGE
+    df_page = df.iloc[start_idx:end_idx]
     
     # Header
-    st.markdown("#### 📜 Recent Entries (Showing last 50)")
+    st.markdown("#### 📜 Recent Entries")
     
-    # Determine columns to show based on table
     if table_name == "export_figures":
         cols_cfg = [2, 2, 2, 2, 2, 1] 
         headers = ["Week End", "Tons", "Value ($)", "Avg Price", "Change", "Action"]
-    else: # market_prices
+    else: 
         cols_cfg = [2, 1, 1, 1, 1, 1, 1]
         headers = ["Date", "Tombul", "Cakildak", "Levant", "USD", "EUR", "Action"]
 
-    # Header Row
     h_cols = st.columns(cols_cfg)
-    for i, h in enumerate(headers):
-        h_cols[i].markdown(f"**{h}**")
+    for i, h in enumerate(headers): h_cols[i].markdown(f"**{h}**")
     st.markdown("---")
 
-    for idx, row in df.iterrows():
+    for idx, row in df_page.iterrows():
         r_cols = st.columns(cols_cfg)
         
-        # Render Data
         if table_name == "export_figures":
             r_cols[0].write(row['week_ending_date'].strftime('%Y-%m-%d'))
             r_cols[1].write(f"{row['total_metric_tons']:,.0f}")
@@ -241,35 +251,34 @@ def render_delete_table(df, table_name, date_col):
             r_cols[4].write(f"{row['rate_usd_try']:.4f}")
             r_cols[5].write(f"{row['rate_eur_try']:.4f}")
 
-        # Render Action Column (Delete Logic)
         target = f"{table_name}_{row['id']}"
-        
-        # If this row is in "Confirmation Mode"
         if st.session_state.delete_confirm_id == target:
-            # Show Confirm/Cancel buttons side-by-side in the last column
-            # Use small columns inside the last column
             b_yes, b_no = r_cols[-1].columns(2)
-            if b_yes.button("✅", key=f"yes_{target}", help="Confirm Delete"):
-                try:
-                    supabase.table(table_name).delete().eq("id", row['id']).execute()
-                    st.toast("Entry deleted successfully!", icon="🗑️")
-                    st.session_state.delete_confirm_id = None
-                    time.sleep(1)
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error: {e}")
-            
-            if b_no.button("❌", key=f"no_{target}", help="Cancel"):
-                st.session_state.delete_confirm_id = None
-                st.rerun()
+            if b_yes.button("✅", key=f"yes_{target}"):
+                supabase.table(table_name).delete().eq("id", row['id']).execute()
+                st.session_state.delete_confirm_id = None; time.sleep(0.5); st.rerun()
+            if b_no.button("❌", key=f"no_{target}"):
+                st.session_state.delete_confirm_id = None; st.rerun()
         else:
-            # Show Trash Icon
-            if r_cols[-1].button("🗑️", key=f"del_{target}", help="Delete Entry"):
-                st.session_state.delete_confirm_id = target
-                st.rerun()
-                
+            if r_cols[-1].button("🗑️", key=f"del_{target}"):
+                st.session_state.delete_confirm_id = target; st.rerun()
+    
     st.markdown("---")
-
+    
+    # Navigation Buttons
+    c_prev, c_info, c_next = st.columns([1, 2, 1])
+    
+    if current_page > 0:
+        if c_prev.button("⬅️ Previous 50", key=f"p_{table_name}"):
+            st.session_state[page_state_key] -= 1
+            st.rerun()
+            
+    c_info.write(f"**Page {current_page + 1} of {total_pages}** (Total: {total_rows} entries)")
+    
+    if current_page < total_pages - 1:
+        if c_next.button("Next 50 ➡️", key=f"n_{table_name}"):
+            st.session_state[page_state_key] += 1
+            st.rerun()
 
 # ==========================================
 # 🔐 AUTHENTICATION
@@ -438,7 +447,7 @@ else:
                 
                 # Interactive Delete Table
                 df_ex = get_export_figures()
-                render_delete_table(df_ex, "export_figures", "week_ending_date")
+                render_delete_table(df_ex, "export_figures", "week_ending_date", "page_export")
             
             with tabs[3]:
                 st.header("📝 Input Daily Market Prices")
@@ -477,7 +486,7 @@ else:
                 
                 # Interactive Delete Table
                 df_hist = get_market_prices()
-                render_delete_table(df_hist, "market_prices", "date")
+                render_delete_table(df_hist, "market_prices", "date", "page_market")
 
     # ==========================
     # MODULE 1: COMBINED
