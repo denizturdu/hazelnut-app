@@ -320,7 +320,14 @@ else:
                     yaxis=dict(title=dict(text="Metric Tons", font=dict(color="blue")), tickfont=dict(color="blue"), dtick=500), 
                     yaxis2=dict(title=dict(text="Total Value ($)", font=dict(color="green")), tickfont=dict(color="green"), anchor="x", overlaying="y", side="right", dtick=5000000), 
                     yaxis3=dict(title=dict(text="Avg Price ($/kg)", font=dict(color="red")), tickfont=dict(color="red"), anchor="free", overlaying="y", side="right", position=0.95, range=[5, 20]), 
-                    legend=dict(x=0.1, y=1.1, orientation='h'), 
+                    # --- LEGEND MOVED TO BOTTOM ---
+                    legend=dict(
+                        orientation="h",
+                        yanchor="top",
+                        y=-0.3, # Moves legend below X-axis
+                        xanchor="center",
+                        x=0.5
+                    ),
                     height=600
                 )
                 st.plotly_chart(fig, use_container_width=True)
