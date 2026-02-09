@@ -20,8 +20,7 @@ if 'active_quality_row' not in st.session_state: st.session_state.active_quality
 if 'generated_excel_data' not in st.session_state: st.session_state.generated_excel_data = None
 if 'temp_custom_params' not in st.session_state: st.session_state.temp_custom_params = {}
 
-# --- CONSTANTS & PERMISSIONS ---
-# Main Modules
+# --- CONSTANTS ---
 MODULE_MAP = {
     1: "1. Satın Alma ve Giriş İşlemleri",
     3: "2. Üretim - Kırma",            
@@ -29,14 +28,6 @@ MODULE_MAP = {
     7: "4. Kalite Kontrol",
     4: "5. Administrator Settings",    
     6: "6. Offers"                     
-}
-
-# Sub-permissions (Tabs)
-# Format: Parent_ID: {Sub_ID: "Tab Name"}
-TAB_PERMISSIONS = {
-    1: {11: "🏪 Şube Alım (Branch)", 12: "🏭 Fabrika Alım (Factory)"},
-    4: {41: "👥 User Permissions", 42: "📦 Material Definitions", 43: "📜 Login Logs"},
-    7: {71: "➕ Yeni Spesifikasyon", 72: "📜 Listele/Güncelle"}
 }
 
 CUSTOMER_PORTAL_NAME = "🌍 Avella Customer Portal"
@@ -67,6 +58,21 @@ def get_market_prices():
         response = supabase.table("market_prices").select("*").order("date", desc=False).limit(3000).execute()
         df = pd.DataFrame(response.data)
         if not df.empty: df['date'] = pd.to_datetime(df['date'])
+        return df
+    except: return pd.DataFrame()
+
+def get_export_figures():
+    """Fetch export figures and calculate derived columns."""
+    try:
+        response = supabase.table("export_figures").select("*").order("week_ending_date", desc=False).execute()
+        df = pd.DataFrame(response.data)
+        if not df.empty:
+            df['week_ending_date'] = pd.to_datetime(df['week_ending_date'])
+            # Calculate Avg Price (USD/kg)
+            # Total Value is in USD, Tons is in Tons. 1 Ton = 1000 kg.
+            df['avg_kg_price'] = df.apply(lambda x: x['total_export_value_usd'] / (x['total_metric_tons'] * 1000) if x['total_metric_tons'] > 0 else 0, axis=1)
+            # Calculate Change
+            df['price_change'] = df['avg_kg_price'].diff()
         return df
     except: return pd.DataFrame()
 
@@ -201,7 +207,7 @@ if not st.session_state.user:
                 else: st.error(msg)
 
 # ==========================================
-# 🚀 MAIN APP - MULTI-MENU SIDEBAR
+# 🚀 MAIN APP (ROUTER LOGIC)
 # ==========================================
 else:
     user = st.session_state.user; role = st.session_state.role
@@ -258,18 +264,179 @@ else:
     # ==========================
     if module == CUSTOMER_PORTAL_NAME:
         st.title(CUSTOMER_PORTAL_NAME)
-        portal_tabs = ["Inshell Hazelnuts and Market Updates"]
-        if role == 'administrator': portal_tabs.append("Avella Market Price Input (Admin)")
+        
+        # Determine accessible tabs
+        portal_tabs = ["Inshell Hazelnuts and Market Updates", "Weekly Export Figures"]
+        if role == 'administrator':
+            portal_tabs.append("Input Export Figures")
+            portal_tabs.append("Avella Market Price Input (Admin)")
+        
         tabs = st.tabs(portal_tabs)
+        
+        # --- TAB 1: Inshell Graph ---
         with tabs[0]:
             st.header("🌰 Market Updates & Inshell Prices")
             df_prices = get_market_prices()
+            live_rates = get_live_rates()
+            rate_usd_live = live_rates.get("USD", 34.0)
+            rate_eur_live = live_rates.get("EUR", 37.0)
+            with st.expander("Live Currency Rates (Auto-fetched)", expanded=True):
+                c1, c2 = st.columns(2)
+                c1.metric("USD/TRY", f"{rate_usd_live:.4f}")
+                c2.metric("EUR/TRY", f"{rate_eur_live:.4f}")
+            
             if not df_prices.empty:
-                st.line_chart(df_prices.set_index('date')[['price_tombul', 'price_cakildak', 'price_levant']])
-            else: st.info("No data.")
-        if len(tabs) > 1:
-            with tabs[1]:
-                st.write("Admin Input Placeholder")
+                max_db_date = df_prices['date'].max()
+                start_window = max_db_date - timedelta(days=365)
+                colors = {"Tombul": "firebrick", "Cakildak": "royalblue", "Levant": "green"}
+                st.markdown("---")
+                def build_chart(title, mode_type, y_label):
+                    fig = go.Figure()
+                    for h_type in ["Tombul", "Cakildak", "Levant"]:
+                        col_name = f"price_{h_type.lower()}"
+                        if col_name in df_prices.columns:
+                            if mode_type == 'TL': y_vals = df_prices[col_name]
+                            elif mode_type == 'USD': y_vals = df_prices[col_name] / df_prices['rate_usd_try']
+                            elif mode_type == 'EUR': y_vals = df_prices[col_name] / df_prices['rate_eur_try']
+                            fig.add_trace(go.Scatter(x=df_prices['date'], y=y_vals, name=h_type, line=dict(color=colors[h_type], width=3), mode='lines', fill=None))
+                    fig.update_layout(title=title, xaxis=dict(title="Date", rangeslider=dict(visible=True), type="date", range=[start_window, max_db_date]), yaxis=dict(title=dict(text=y_label, font=dict(color="black"))), hovermode="x unified", height=500)
+                    return fig
+                st.plotly_chart(build_chart("1. Inshell Prices (TL/kg)", 'TL', "Price (TL)"), use_container_width=True)
+                st.plotly_chart(build_chart("2. Inshell Prices (USD/kg)", 'USD', "Price (USD)"), use_container_width=True)
+                st.plotly_chart(build_chart("3. Inshell Prices (EUR/kg)", 'EUR', "Price (EUR)"), use_container_width=True)
+            else: st.info("No market price data available yet.")
+
+        # --- TAB 2: Export Graph ---
+        with tabs[1]:
+            st.header("🚢 Weekly Export Figures from Turkey")
+            df_export = get_export_figures()
+            if not df_export.empty:
+                # Create Multi-Axis Chart
+                fig = go.Figure()
+
+                # 1. Metric Tons (Bar or Line? User said Line. Scale ~200 tons dtick)
+                fig.add_trace(go.Scatter(
+                    x=df_export['week_ending_date'], 
+                    y=df_export['total_metric_tons'], 
+                    name="Metric Tons",
+                    yaxis="y1",
+                    line=dict(color='blue', width=3)
+                ))
+
+                # 2. Total Value (Line. Scale ~5M)
+                fig.add_trace(go.Scatter(
+                    x=df_export['week_ending_date'], 
+                    y=df_export['total_export_value_usd'], 
+                    name="Total Value ($)",
+                    yaxis="y2",
+                    line=dict(color='green', width=3)
+                ))
+
+                # 3. Avg Price (Line. Scale 5-20)
+                fig.add_trace(go.Scatter(
+                    x=df_export['week_ending_date'], 
+                    y=df_export['avg_kg_price'], 
+                    name="Avg KG Price ($)",
+                    yaxis="y3",
+                    line=dict(color='red', width=3, dash='dot')
+                ))
+
+                # Layout with 3 Axes
+                fig.update_layout(
+                    title="Weekly Export Correlations (Tons vs Value vs Price)",
+                    xaxis=dict(domain=[0.1, 0.9]), # Make room for axes
+                    yaxis=dict(
+                        title="Metric Tons",
+                        titlefont=dict(color="blue"),
+                        tickfont=dict(color="blue"),
+                        dtick=200 # Requested Scale
+                    ),
+                    yaxis2=dict(
+                        title="Total Value ($)",
+                        titlefont=dict(color="green"),
+                        tickfont=dict(color="green"),
+                        anchor="x",
+                        overlaying="y",
+                        side="right",
+                        dtick=5000000 # Requested Scale
+                    ),
+                    yaxis3=dict(
+                        title="Avg Price ($/kg)",
+                        titlefont=dict(color="red"),
+                        tickfont=dict(color="red"),
+                        anchor="free",
+                        overlaying="y",
+                        side="right",
+                        position=0.95,
+                        range=[5, 20] # Requested Range
+                    ),
+                    legend=dict(x=0.1, y=1.1, orientation='h'),
+                    height=600
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No export data available yet.")
+
+        # --- TAB 3: Export Input (Admin Only) ---
+        if role == 'administrator' and len(tabs) > 2:
+            with tabs[2]:
+                st.header("📝 Input Export Figures")
+                
+                # Input Form
+                with st.form("export_input"):
+                    c1, c2, c3 = st.columns(3)
+                    date_in = c1.date_input("Week Ending Date", value=datetime.now())
+                    tons_in = c2.number_input("Total Metric Tons", min_value=0.0, step=100.0)
+                    val_in = c3.number_input("Total Export Value (USD)", min_value=0.0, step=100000.0)
+                    
+                    if st.form_submit_button("Save Weekly Figure"):
+                        if tons_in > 0 and val_in > 0:
+                            try:
+                                supabase.table("export_figures").upsert({
+                                    "week_ending_date": str(date_in),
+                                    "total_metric_tons": tons_in,
+                                    "total_export_value_usd": val_in,
+                                    "created_by": st.session_state.user['email']
+                                }, on_conflict="week_ending_date").execute()
+                                st.success("Saved successfully!")
+                                time.sleep(1); st.rerun()
+                            except Exception as e: st.error(f"Error: {e}")
+                        else:
+                            st.warning("Please enter valid Tons and Value.")
+                
+                st.markdown("### 📊 Data Table")
+                df_export = get_export_figures()
+                if not df_export.empty:
+                    # Format for display
+                    display_df = df_export.copy()
+                    display_df['week_ending_date'] = display_df['week_ending_date'].dt.strftime('%Y-%m-%d')
+                    
+                    # Columns: Date, Tons, Value, Avg Price, Change
+                    cols_to_show = ['week_ending_date', 'total_metric_tons', 'total_export_value_usd', 'avg_kg_price', 'price_change']
+                    
+                    st.dataframe(
+                        display_df[cols_to_show].sort_values('week_ending_date', ascending=False).style.format({
+                            "total_metric_tons": "{:,.2f}", 
+                            "total_export_value_usd": "${:,.2f}", 
+                            "avg_kg_price": "${:.2f}",
+                            "price_change": "{:+.2f}"
+                        }),
+                        use_container_width=True
+                    )
+
+        # --- TAB 4: Inshell Input (Admin Only) ---
+        if role == 'administrator' and len(tabs) > 3:
+            with tabs[3]:
+                st.header("📝 Input Daily Market Prices")
+                with st.form("price_input_form"):
+                    d_date = st.date_input("Date", value=datetime.now()); st.caption("Enter prices for ALL 3 types (TL/kg)."); c1, c2, c3 = st.columns(3); p_tombul = c1.number_input("Tombul", min_value=0.0, step=0.5); p_cakildak = c2.number_input("Cakildak", min_value=0.0, step=0.5); p_levant = c3.number_input("Levant", min_value=0.0, step=0.5)
+                    st.markdown("---"); st.write("**Exchange Rates (Auto-fetched)**"); c4, c5 = st.columns(2); r_usd = c4.number_input("USD/TRY Rate", min_value=0.0, step=0.01, format="%.4f", value=34.50); r_eur = c5.number_input("EUR/TRY Rate", min_value=0.0, step=0.01, format="%.4f", value=37.20)
+                    if st.form_submit_button("Save Entry"):
+                        if p_tombul > 0 and p_cakildak > 0 and p_levant > 0:
+                            payload = {"date": str(d_date), "price_tombul": p_tombul, "price_cakildak": p_cakildak, "price_levant": p_levant, "rate_usd_try": r_usd, "rate_eur_try": r_eur, "created_by": st.session_state.user['email']}
+                            try: supabase.table("market_prices").upsert(payload, on_conflict="date").execute(); st.success("Entry Saved Successfully!"); time.sleep(1); st.rerun()
+                            except Exception as e: st.error(f"Error: {e}")
+                        else: st.warning("Please fill all price fields.")
 
     # ==========================
     # MODULE 1: COMBINED
@@ -360,12 +527,16 @@ else:
                             c1, c2 = st.columns(2); supplier = c1.text_input("Firma"); desc = c2.text_input("Açıklama"); c3, c4 = st.columns(2); qty = c3.number_input("Miktar", 1.0); price = c4.number_input("Tutar", 0.0); 
                             if st.form_submit_button("✅ Kaydet"): insert_record("purchases", {"category": general_type, "supplier": supplier, "item_type": desc, "qty_ordered": qty, "total_value": price, "status": "Pending Arrival", "created_by": st.session_state.user['email']}); st.success("Kaydedildi!")
 
-    # ==========================
-    # MODULE 3
-    # ==========================
     elif module == MODULE_MAP[3]:
-        st.title("Modül 3: Üretim - Kırma")
-        st.info("Production Module Content")
+        st.title("Modül 3: Üretim - Kırma"); 
+        try:
+            response = supabase.table("purchases").select("*").eq("status", "Pending Arrival").execute(); pending_df = pd.DataFrame(response.data)
+            if not pending_df.empty:
+                st.dataframe(pending_df[["id", "supplier", "item_type", "qty_ordered", "location"]]); po_ids = pending_df['id'].tolist(); selected_id = st.selectbox("Sipariş Seç (ID)", po_ids); row = pending_df[pending_df['id'] == selected_id].iloc[0]; st.info(f"Giriş: {row['item_type']} - {row['supplier']}")
+                with st.form("intake"): c1, c2 = st.columns(2); plate = c1.text_input("Plaka"); waybill = c2.text_input("İrsaliye"); qty = st.number_input("Kantar Net", value=float(row['qty_ordered'] or 0)); loc = st.text_input("Depo"); 
+                if st.form_submit_button("Onayla"): supabase.table("purchases").update({"status": "Received"}).eq("id", selected_id).execute(); insert_record("intake_log", {"po_id": int(selected_id), "plate_number": plate, "waybill_no": waybill, "received_qty": qty, "location_in_warehouse": loc, "created_by": st.session_state.user['email']}); insert_record("stock_movements", {"item_name": row['item_type'], "category": row.get('category'), "quantity": qty, "move_type": "Intake", "location": loc, "created_by": st.session_state.user['email']}); st.success("Giriş Yapıldı!"); time.sleep(1); st.rerun()
+            else: st.info("Bekleyen yok.")
+        except Exception as e: st.error(f"Hata: {e}")
 
     # ==========================
     # MODULE 4: ADMIN
@@ -414,7 +585,7 @@ else:
                                 if st.checkbox("  └ Tab: Users", key="c_m4_41"): new_mods.append(41)
                                 if st.checkbox("  └ Tab: Materials", key="c_m4_42"): new_mods.append(42)
                                 if st.checkbox("  └ Tab: Logs", key="c_m4_43"): new_mods.append(43)
-                            
+                                
                             # For simple modules, just main access
                             with c1:
                                 if st.checkbox("3. Production", key="c_m3"): new_mods.append(3)
