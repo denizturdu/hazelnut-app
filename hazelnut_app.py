@@ -28,9 +28,10 @@ if 'temp_custom_params' not in st.session_state: st.session_state.temp_custom_pa
 if 'delete_confirm_id' not in st.session_state: st.session_state.delete_confirm_id = None
 if 'edit_domestic_id' not in st.session_state: st.session_state.edit_domestic_id = None
 
-# --- NEW STATES FOR SAFE FORM RESET ---
+# --- NEW STATES FOR SAFE FORM RESET & EDIT ---
 if 'reset_domestic_form' not in st.session_state: st.session_state.reset_domestic_form = False
 if 'domestic_success_msg' not in st.session_state: st.session_state.domestic_success_msg = None
+if 'dom_data_loaded' not in st.session_state: st.session_state.dom_data_loaded = False # Prevents overwriting user input
 
 # Pagination States
 if 'page_export' not in st.session_state: st.session_state.page_export = 0
@@ -261,9 +262,10 @@ def render_delete_table(df, table_name, date_col, page_state_key):
         with r_cols[-1]:
             if table_name == "domestic_kernel_prices":
                 c_edit, c_del = st.columns(2)
-                # --- SAFE EDIT: SET ID AND RERUN ONLY ---
+                # --- SAFE EDIT: SET ID, RESET FLAG AND RERUN ---
                 if c_edit.button("✏️", key=f"edit_{target}", help="Edit Entry"):
                     st.session_state.edit_domestic_id = row['id']
+                    st.session_state.dom_data_loaded = False # Force reload of new data
                     st.rerun()
                 
                 if st.session_state.delete_confirm_id == target:
@@ -557,20 +559,8 @@ else:
                     if 'dom_date' not in st.session_state: st.session_state.dom_date = datetime.now().date()
                     if 'dom_time' not in st.session_state: st.session_state.dom_time = datetime.now().time()
 
-                    # --- CRITICAL: PRE-LOAD OR RESET DATA BEFORE WIDGETS RENDER ---
-                    
-                    # 1. Handle Reset Logic (Safe clearing after save)
-                    if st.session_state.reset_domestic_form:
-                        for k in ['l1','l2','l3','g1','g2','g3','bur','cik','cur']: st.session_state[k] = 0.0
-                        st.session_state.reset_domestic_form = False
-                        
-                    # 2. Handle Success Message (Safe display after rerun)
-                    if st.session_state.domestic_success_msg:
-                        st.success(st.session_state.domestic_success_msg)
-                        st.session_state.domestic_success_msg = None
-
-                    # 3. Handle Edit Logic (Safe loading)
-                    if st.session_state.edit_domestic_id:
+                    # --- PRE-LOAD: ONLY IF NOT LOADED YET ---
+                    if st.session_state.edit_domestic_id and not st.session_state.dom_data_loaded:
                         res = supabase.table("domestic_kernel_prices").select("*").eq("id", st.session_state.edit_domestic_id).execute()
                         if res.data:
                             row = res.data[0]
@@ -590,9 +580,21 @@ else:
                             st.session_state.cur = row.get('price_curuk', 0.0)
                             st.session_state.dom_usd = row.get('rate_usd_try', 0.0)
                             st.session_state.dom_eur = row.get('rate_eur_try', 0.0)
+                            st.session_state.dom_data_loaded = True # MARK AS LOADED
                         else:
                             st.error("Could not load record.")
                             st.session_state.edit_domestic_id = None
+
+                    # --- RESET: IF CANCELLED OR SAVED ---
+                    if st.session_state.reset_domestic_form:
+                        for k in ['l1','l2','l3','g1','g2','g3','bur','cik','cur']: st.session_state[k] = 0.0
+                        st.session_state.dom_data_loaded = False
+                        st.session_state.reset_domestic_form = False
+
+                    # Success Msg
+                    if st.session_state.domestic_success_msg:
+                        st.success(st.session_state.domestic_success_msg)
+                        st.session_state.domestic_success_msg = None
 
                     with st.container():
                         c_date, c_time, c_btn = st.columns([2, 2, 2])
