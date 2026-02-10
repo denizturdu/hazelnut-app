@@ -28,6 +28,10 @@ if 'temp_custom_params' not in st.session_state: st.session_state.temp_custom_pa
 if 'delete_confirm_id' not in st.session_state: st.session_state.delete_confirm_id = None
 if 'edit_domestic_id' not in st.session_state: st.session_state.edit_domestic_id = None
 
+# --- NEW STATES FOR SAFE FORM RESET ---
+if 'reset_domestic_form' not in st.session_state: st.session_state.reset_domestic_form = False
+if 'domestic_success_msg' not in st.session_state: st.session_state.domestic_success_msg = None
+
 # Pagination States
 if 'page_export' not in st.session_state: st.session_state.page_export = 0
 if 'page_market' not in st.session_state: st.session_state.page_market = 0
@@ -56,7 +60,7 @@ TAB_PERMISSIONS = {
         92: "Export Figures (Read)", 
         95: "Domestic Kernel (Read)",
         93: "Admin: Export Input", 
-        94: "Admin: Inshell Input",
+        94: "Admin: Inshell Input", 
         96: "Admin: Domestic Input"
     }
 }
@@ -255,11 +259,10 @@ def render_delete_table(df, table_name, date_col, page_state_key):
         
         target = f"{table_name}_{row['id']}"
         with r_cols[-1]:
-            # Edit Button (Refactored to avoid StreamlitAPIException)
             if table_name == "domestic_kernel_prices":
                 c_edit, c_del = st.columns(2)
+                # --- SAFE EDIT: SET ID AND RERUN ONLY ---
                 if c_edit.button("✏️", key=f"edit_{target}", help="Edit Entry"):
-                    # ONLY SET ID AND RERUN
                     st.session_state.edit_domestic_id = row['id']
                     st.rerun()
                 
@@ -554,7 +557,19 @@ else:
                     if 'dom_date' not in st.session_state: st.session_state.dom_date = datetime.now().date()
                     if 'dom_time' not in st.session_state: st.session_state.dom_time = datetime.now().time()
 
-                    # --- CRITICAL: PRE-LOAD EDIT DATA BEFORE WIDGETS RENDER ---
+                    # --- CRITICAL: PRE-LOAD OR RESET DATA BEFORE WIDGETS RENDER ---
+                    
+                    # 1. Handle Reset Logic (Safe clearing after save)
+                    if st.session_state.reset_domestic_form:
+                        for k in ['l1','l2','l3','g1','g2','g3','bur','cik','cur']: st.session_state[k] = 0.0
+                        st.session_state.reset_domestic_form = False
+                        
+                    # 2. Handle Success Message (Safe display after rerun)
+                    if st.session_state.domestic_success_msg:
+                        st.success(st.session_state.domestic_success_msg)
+                        st.session_state.domestic_success_msg = None
+
+                    # 3. Handle Edit Logic (Safe loading)
                     if st.session_state.edit_domestic_id:
                         res = supabase.table("domestic_kernel_prices").select("*").eq("id", st.session_state.edit_domestic_id).execute()
                         if res.data:
@@ -600,8 +615,7 @@ else:
                         st.info(f"✏️ Editing mode active for ID {st.session_state.edit_domestic_id}")
                         if st.button("Cancel Edit"):
                             st.session_state.edit_domestic_id = None
-                            # Reset defaults
-                            for k in ['l1','l2','l3','g1','g2','g3','bur','cik','cur']: st.session_state[k] = 0.0
+                            st.session_state.reset_domestic_form = True # Trigger safe reset
                             st.rerun()
 
                     with st.form("domestic_input_form"):
@@ -655,18 +669,16 @@ else:
 
                             try:
                                 if edit_mode:
-                                    # Update existing
                                     supabase.table("domestic_kernel_prices").update(payload).eq("id", st.session_state.edit_domestic_id).execute()
-                                    st.success("Updated successfully!")
+                                    st.session_state.domestic_success_msg = "Updated successfully!"
                                     st.session_state.edit_domestic_id = None
+                                    st.session_state.reset_domestic_form = True # Trigger safe reset
                                 else:
-                                    # Insert new
                                     supabase.table("domestic_kernel_prices").insert(payload).execute()
-                                    st.success("Saved (with auto-fill applied where needed)!")
+                                    st.session_state.domestic_success_msg = "Saved (with auto-fill applied)!"
+                                    st.session_state.reset_domestic_form = True # Trigger safe reset
                                 
-                                # Reset form defaults
-                                for k in ['l1','l2','l3','g1','g2','g3','bur','cik','cur']: st.session_state[k] = 0.0
-                                time.sleep(1); st.rerun()
+                                st.rerun()
                             except Exception as e: st.error(f"Error: {e}")
 
                     df_dom_hist = get_domestic_prices()
