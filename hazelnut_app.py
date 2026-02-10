@@ -716,7 +716,7 @@ else:
                         st.markdown("---"); st.subheader("3. Ödeme ve Kayıt"); f1, f2, f3 = st.columns(3); doc_num = f1.text_input("Makbuz / Fatura No"); pay_amount = f2.number_input("Ödenen Tutar", 0.0); pay_method = f3.selectbox("Ödeme Yöntemi", ["Nakit", "Banka", "Çek"]); 
                         if reg_type != "Emanet": st.metric("Kalan Bakiye", f"{total_val - pay_amount:,.2f} TL")
                         if st.form_submit_button("✅ Şube Girişini Kaydet"):
-                            payload = {"created_by": st.session_state.user['email'], "status": "Pending Arrival", "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type, "id_number": id_num, "city": city, "district": dist_in, "village": vill_in, "phone_number": contact, "cert_status": cert_status, "reg_type": reg_type, "location": location, "item_type": hazelnut_type, "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num, "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount, "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag, "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv, "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over, "moisture": val_moist, "calculated_randiman": val_randiman, "gross_price_50": price_gross, "net_price_50": net_price_50, "actual_unit_price": unit_price}; insert_record("purchases", payload); st.success("Şube Girişi Kaydedildi!")
+                            payload = {"created_by": st.session_state.user['email'], "status": "Pending Arrival", "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type, "id_number": id_num, "city": city, "district": dist_in, "village": vill_in, "phone_number": contact, "cert_status": cert_status, "reg_type": reg_type, "location": location, "item_type": hazelnut_type, "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num, "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount, "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag, "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv, "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over, "moisture": val_moist, "calculated_randiman": val_randiman, "gross_price_50": price_gross, "actual_unit_price": price_net_deducted}; insert_record("purchases", payload); st.success("Şube Girişi Kaydedildi!")
 
             if "🏭 Fabrika Alım (Factory)" in tabs_to_show:
                 with tabs[tabs_to_show.index("🏭 Fabrika Alım (Factory)")]:
@@ -841,7 +841,7 @@ else:
                             if st.form_submit_button("Create"):
                                 success, msg = register_user(email, pwd, role=role_sel)
                                 if success:
-                                    time.sleep(1); new_user_data = supabase.table("users").select("id").eq("email", email).execute()
+                                    time.sleep(1); new_user_data = supabase.table("app_users").select("id").eq("email", email).execute()
                                     if new_user_data.data:
                                         uid = new_user_data.data[0]['id']
                                         update_user_permissions(uid, True, new_mods, role_sel)
