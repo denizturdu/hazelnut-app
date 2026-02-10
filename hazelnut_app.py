@@ -32,7 +32,7 @@ if 'edit_domestic_id' not in st.session_state: st.session_state.edit_domestic_id
 if 'edit_export_id' not in st.session_state: st.session_state.edit_export_id = None
 if 'edit_market_id' not in st.session_state: st.session_state.edit_market_id = None
 
-# --- DATA LOAD FLAGS (To prevent overwriting user input) ---
+# --- DATA LOAD FLAGS ---
 if 'dom_data_loaded' not in st.session_state: st.session_state.dom_data_loaded = False
 if 'exp_data_loaded' not in st.session_state: st.session_state.exp_data_loaded = False
 if 'mkt_data_loaded' not in st.session_state: st.session_state.mkt_data_loaded = False
@@ -240,11 +240,11 @@ def render_delete_table(df, table_name, date_col, page_state_key):
     current_page = st.session_state[page_state_key]; start_idx = current_page * ROWS_PER_PAGE; end_idx = start_idx + ROWS_PER_PAGE; df_page = df.iloc[start_idx:end_idx]
     st.markdown("#### 📜 Recent Entries")
     if table_name == "export_figures":
-        cols_cfg = [2, 2, 2, 2, 2, 1]; headers = ["Week End", "Tons", "Value ($)", "Avg Price", "Change", "Action"]
+        cols_cfg = [2, 2, 2, 2, 2, 1]; headers = ["Week End", "Tons", "Value ($)", "Avg Price", "Weekly Change", "Action"]
     elif table_name == "market_prices": 
         cols_cfg = [2, 1, 1, 1, 1, 1, 1]; headers = ["Date", "Tombul", "Cakildak", "Levant", "USD", "EUR", "Action"]
     elif table_name == "domestic_kernel_prices":
-        cols_cfg = [1.5, 1, 1,1,1, 1,1,1, 1,1,1, 1,1, 1.5]; headers = ["Date", "Time", "L11", "L12", "L13", "G11", "G12", "G13", "Bur", "Cik", "Cur", "USD", "EUR", "Action"]
+        cols_cfg = [1.5, 1, 1,1,1, 1,1,1, 1,1,1, 1,1, 1.5]; headers = ["Date", "Time", "Levant 11-13", "Levant 12-13", "Levant 13-15", "Giresun 11-13", "Giresun 12-13", "Giresun 13-15", "Burusuk", "Cikinti", "Curuk", "USD", "EUR", "Action"]
     else: st.error("Unknown table config"); return
     h_cols = st.columns(cols_cfg)
     for i, h in enumerate(headers): h_cols[i].markdown(f"**{h}**")
