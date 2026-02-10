@@ -26,12 +26,16 @@ if 'active_quality_row' not in st.session_state: st.session_state.active_quality
 if 'generated_excel_data' not in st.session_state: st.session_state.generated_excel_data = None
 if 'temp_custom_params' not in st.session_state: st.session_state.temp_custom_params = {}
 if 'delete_confirm_id' not in st.session_state: st.session_state.delete_confirm_id = None
-if 'edit_domestic_id' not in st.session_state: st.session_state.edit_domestic_id = None
 
-# --- NEW STATES FOR SAFE FORM RESET & EDIT ---
-if 'reset_domestic_form' not in st.session_state: st.session_state.reset_domestic_form = False
-if 'domestic_success_msg' not in st.session_state: st.session_state.domestic_success_msg = None
-if 'dom_data_loaded' not in st.session_state: st.session_state.dom_data_loaded = False # Prevents overwriting user input
+# --- EDIT STATES ---
+if 'edit_domestic_id' not in st.session_state: st.session_state.edit_domestic_id = None
+if 'edit_export_id' not in st.session_state: st.session_state.edit_export_id = None
+if 'edit_market_id' not in st.session_state: st.session_state.edit_market_id = None
+
+# --- DATA LOAD FLAGS (To prevent overwriting user input) ---
+if 'dom_data_loaded' not in st.session_state: st.session_state.dom_data_loaded = False
+if 'exp_data_loaded' not in st.session_state: st.session_state.exp_data_loaded = False
+if 'mkt_data_loaded' not in st.session_state: st.session_state.mkt_data_loaded = False
 
 # Pagination States
 if 'page_export' not in st.session_state: st.session_state.page_export = 0
@@ -260,26 +264,25 @@ def render_delete_table(df, table_name, date_col, page_state_key):
         
         target = f"{table_name}_{row['id']}"
         with r_cols[-1]:
-            if table_name == "domestic_kernel_prices":
-                c_edit, c_del = st.columns(2)
-                # --- SAFE EDIT: SET ID, RESET FLAG AND RERUN ---
-                if c_edit.button("✏️", key=f"edit_{target}", help="Edit Entry"):
+            # GENERIC EDIT LOGIC FOR ALL TABLES
+            c_edit, c_del = st.columns(2)
+            if c_edit.button("✏️", key=f"edit_{target}", help="Edit Entry"):
+                if table_name == "domestic_kernel_prices":
                     st.session_state.edit_domestic_id = row['id']
-                    st.session_state.dom_data_loaded = False # Force reload of new data
-                    st.rerun()
-                
-                if st.session_state.delete_confirm_id == target:
-                    if c_del.button("✅", key=f"yes_{target}"): supabase.table(table_name).delete().eq("id", row['id']).execute(); st.session_state.delete_confirm_id = None; time.sleep(0.5); st.rerun()
-                    if c_del.button("❌", key=f"no_{target}"): st.session_state.delete_confirm_id = None; st.rerun()
-                else:
-                    if c_del.button("🗑️", key=f"del_{target}"): st.session_state.delete_confirm_id = target; st.rerun()
+                    st.session_state.dom_data_loaded = False
+                elif table_name == "export_figures":
+                    st.session_state.edit_export_id = row['id']
+                    st.session_state.exp_data_loaded = False
+                elif table_name == "market_prices":
+                    st.session_state.edit_market_id = row['id']
+                    st.session_state.mkt_data_loaded = False
+                st.rerun()
+            
+            if st.session_state.delete_confirm_id == target:
+                if c_del.button("✅", key=f"yes_{target}"): supabase.table(table_name).delete().eq("id", row['id']).execute(); st.session_state.delete_confirm_id = None; time.sleep(0.5); st.rerun()
+                if c_del.button("❌", key=f"no_{target}"): st.session_state.delete_confirm_id = None; st.rerun()
             else:
-                if st.session_state.delete_confirm_id == target:
-                    c1, c2 = st.columns(2)
-                    if c1.button("✅", key=f"yes_{target}"): supabase.table(table_name).delete().eq("id", row['id']).execute(); st.session_state.delete_confirm_id = None; time.sleep(0.5); st.rerun()
-                    if c2.button("❌", key=f"no_{target}"): st.session_state.delete_confirm_id = None; st.rerun()
-                else:
-                    if st.button("🗑️", key=f"del_{target}"): st.session_state.delete_confirm_id = target; st.rerun()
+                if c_del.button("🗑️", key=f"del_{target}"): st.session_state.delete_confirm_id = target; st.rerun()
 
     st.markdown("---")
     c_first, c_prev, c_info, c_next, c_last = st.columns([1, 1, 2, 1, 1])
@@ -394,7 +397,7 @@ else:
         else:
             tabs = st.tabs(portal_tabs_map)
             
-            # TAB 1: INSHELL
+            # TAB 1: INSHELL GRAPH
             if "Inshell Hazelnuts and Market Updates" in portal_tabs_map:
                 with tabs[portal_tabs_map.index("Inshell Hazelnuts and Market Updates")]:
                     st.header("🌰 Market Updates & Inshell Prices")
@@ -433,33 +436,19 @@ else:
                     df_dom = get_domestic_prices()
                     if not df_dom.empty:
                         fig = go.Figure()
-                        # Map DB columns to Display Names
                         lines_map = {
-                            "price_levant_11_13": "Levant 11-13",
-                            "price_levant_12_13": "Levant 12-13",
-                            "price_levant_13_15": "Levant 13-15",
-                            "price_giresun_11_13": "Giresun 11-13",
-                            "price_giresun_12_13": "Giresun 12-13",
-                            "price_giresun_13_15": "Giresun 13-15",
-                            "price_burusuk": "Burusuk",
-                            "price_cikinti": "Cikinti",
-                            "price_curuk": "Curuk"
+                            "price_levant_11_13": "Levant 11-13", "price_levant_12_13": "Levant 12-13", "price_levant_13_15": "Levant 13-15",
+                            "price_giresun_11_13": "Giresun 11-13", "price_giresun_12_13": "Giresun 12-13", "price_giresun_13_15": "Giresun 13-15",
+                            "price_burusuk": "Burusuk", "price_cikinti": "Cikinti", "price_curuk": "Curuk"
                         }
                         for col, name in lines_map.items():
                             if col in df_dom.columns:
                                 fig.add_trace(go.Scatter(x=df_dom['date'], y=df_dom[col], name=name, mode='lines'))
-                        
-                        fig.update_layout(
-                            title=dict(text="Domestic Kernel Prices (TL/kg)"),
-                            xaxis=dict(title="Date", rangeslider=dict(visible=True), type="date"),
-                            yaxis=dict(title="Price (TL)"),
-                            legend=dict(orientation="h", yanchor="top", y=-0.3, xanchor="center", x=0.5),
-                            height=600
-                        )
+                        fig.update_layout(title=dict(text="Domestic Kernel Prices (TL/kg)"), xaxis=dict(title="Date", rangeslider=dict(visible=True), type="date"), yaxis=dict(title="Price (TL)"), legend=dict(orientation="h", yanchor="top", y=-0.3, xanchor="center", x=0.5), height=600)
                         st.plotly_chart(fig, use_container_width=True)
                     else: st.info("No domestic price data available.")
 
-            # TAB 2: EXPORT
+            # TAB 2: EXPORT FIGURES GRAPH
             if "Weekly Export Figures" in portal_tabs_map:
                 with tabs[portal_tabs_map.index("Weekly Export Figures")]:
                     st.header("🚢 Weekly Export Figures from Turkey")
@@ -469,82 +458,162 @@ else:
                         fig.add_trace(go.Scatter(x=df_export['week_ending_date'], y=df_export['total_metric_tons'], name="Metric Tons", yaxis="y1", line=dict(color='blue', width=3)))
                         fig.add_trace(go.Scatter(x=df_export['week_ending_date'], y=df_export['total_export_value_usd'], name="Total Value ($)", yaxis="y2", line=dict(color='green', width=3)))
                         fig.add_trace(go.Scatter(x=df_export['week_ending_date'], y=df_export['avg_kg_price'], name="Avg KG Price ($)", yaxis="y3", line=dict(color='red', width=3, dash='dot')))
-                        fig.update_layout(
-                            title=dict(text="Weekly Export Correlations"), 
-                            xaxis=dict(domain=[0.05, 0.9], rangeslider=dict(visible=True), type="date"),
-                            yaxis=dict(title=dict(text="Metric Tons", font=dict(color="blue")), tickfont=dict(color="blue"), dtick=500), 
-                            yaxis2=dict(title=dict(text="Total Value ($)", font=dict(color="green")), tickfont=dict(color="green"), anchor="x", overlaying="y", side="right", dtick=5000000), 
-                            yaxis3=dict(title=dict(text="Avg Price ($/kg)", font=dict(color="red")), tickfont=dict(color="red"), anchor="free", overlaying="y", side="right", position=0.95, range=[5, 20]), 
-                            legend=dict(orientation="h", yanchor="top", y=-0.3, xanchor="center", x=0.5),
-                            height=600
-                        )
+                        fig.update_layout(title=dict(text="Weekly Export Correlations"), xaxis=dict(domain=[0.05, 0.9], rangeslider=dict(visible=True), type="date"), yaxis=dict(title=dict(text="Metric Tons", font=dict(color="blue")), tickfont=dict(color="blue"), dtick=500), yaxis2=dict(title=dict(text="Total Value ($)", font=dict(color="green")), tickfont=dict(color="green"), anchor="x", overlaying="y", side="right", dtick=5000000), yaxis3=dict(title=dict(text="Avg Price ($/kg)", font=dict(color="red")), tickfont=dict(color="red"), anchor="free", overlaying="y", side="right", position=0.95, range=[5, 20]), legend=dict(orientation="h", yanchor="top", y=-0.3, xanchor="center", x=0.5), height=600)
                         st.plotly_chart(fig, use_container_width=True)
                     else: st.info("No export data available.")
 
-            # ADMIN TABS
+            # ADMIN: EXPORT INPUT
             if "Admin: Input Export Figures" in portal_tabs_map:
                 with tabs[portal_tabs_map.index("Admin: Input Export Figures")]:
                     st.header("📝 Input Export Figures")
+                    
+                    # Session States for inputs
+                    if 'exp_date' not in st.session_state: st.session_state.exp_date = datetime.now().date()
+                    if 'exp_tons' not in st.session_state: st.session_state.exp_tons = 0.0
+                    if 'exp_val' not in st.session_state: st.session_state.exp_val = 0.0
+
+                    # Pre-load for Edit
+                    if st.session_state.edit_export_id and not st.session_state.exp_data_loaded:
+                        res = supabase.table("export_figures").select("*").eq("id", st.session_state.edit_export_id).execute()
+                        if res.data:
+                            row = res.data[0]
+                            try: st.session_state.exp_date = datetime.strptime(row['week_ending_date'], '%Y-%m-%d').date()
+                            except: pass
+                            st.session_state.exp_tons = row['total_metric_tons']
+                            st.session_state.exp_val = row['total_export_value_usd']
+                            st.session_state.exp_data_loaded = True
+                        else:
+                            st.session_state.edit_export_id = None
+
+                    edit_mode = st.session_state.edit_export_id is not None
+                    label = f"Update Record #{st.session_state.edit_export_id}" if edit_mode else "Save Weekly Figure"
+                    
+                    if edit_mode:
+                        if st.button("Cancel Edit", key="cancel_exp"):
+                            st.session_state.edit_export_id = None
+                            st.session_state.exp_data_loaded = False
+                            st.session_state.exp_tons = 0.0
+                            st.session_state.exp_val = 0.0
+                            st.rerun()
+
                     with st.form("export_input"):
                         c1, c2, c3 = st.columns(3)
-                        date_in = c1.date_input("Week Ending Date", value=datetime.now())
-                        tons_in = c2.number_input("Total Metric Tons", min_value=0.0, step=100.0)
-                        val_in = c3.number_input("Total Export Value (USD)", min_value=0.0, step=100000.0)
-                        if st.form_submit_button("Save Weekly Figure"):
-                            if tons_in > 0 and val_in > 0:
+                        d_in = c1.date_input("Week Ending Date", key="exp_date")
+                        t_in = c2.number_input("Total Metric Tons", min_value=0.0, step=100.0, key="exp_tons")
+                        v_in = c3.number_input("Total Export Value (USD)", min_value=0.0, step=100000.0, key="exp_val")
+                        
+                        if st.form_submit_button(label):
+                            if t_in > 0 and v_in > 0:
+                                payload = {"week_ending_date": str(d_in), "total_metric_tons": t_in, "total_export_value_usd": v_in, "created_by": st.session_state.user['email']}
                                 try:
-                                    supabase.table("export_figures").upsert({"week_ending_date": str(date_in), "total_metric_tons": tons_in, "total_export_value_usd": val_in, "created_by": st.session_state.user['email']}, on_conflict="week_ending_date").execute()
-                                    st.success("Saved!"); time.sleep(1); st.rerun()
+                                    if edit_mode:
+                                        supabase.table("export_figures").update(payload).eq("id", st.session_state.edit_export_id).execute()
+                                        st.success("Updated!")
+                                        st.session_state.edit_export_id = None
+                                        st.session_state.exp_data_loaded = False
+                                    else:
+                                        supabase.table("export_figures").upsert(payload, on_conflict="week_ending_date").execute()
+                                        st.success("Saved!")
+                                    
+                                    # Reset
+                                    st.session_state.exp_tons = 0.0
+                                    st.session_state.exp_val = 0.0
+                                    time.sleep(1); st.rerun()
                                 except Exception as e: st.error(f"Error: {e}")
-                            else: st.warning("Please enter valid Tons and Value.")
+                            else: st.warning("Enter valid values.")
                     
                     df_ex = get_export_figures()
                     render_delete_table(df_ex, "export_figures", "week_ending_date", "page_export")
             
+            # ADMIN: INSHELL INPUT
             if "Admin: Input Inshell Market Price" in portal_tabs_map:
                 with tabs[portal_tabs_map.index("Admin: Input Inshell Market Price")]:
                     st.header("📝 Input Daily Market Prices")
                     
-                    if 'rate_usd_val' not in st.session_state: st.session_state.rate_usd_val = 34.50
-                    if 'rate_eur_val' not in st.session_state: st.session_state.rate_eur_val = 37.20
-                    if 'in_usd' not in st.session_state: st.session_state.in_usd = 34.50
-                    if 'in_eur' not in st.session_state: st.session_state.in_eur = 37.20
-                    
+                    # Session States
+                    if 'mkt_date' not in st.session_state: st.session_state.mkt_date = datetime.now().date() - timedelta(days=1)
+                    if 'mkt_tombul' not in st.session_state: st.session_state.mkt_tombul = 0.0
+                    if 'mkt_cakildak' not in st.session_state: st.session_state.mkt_cakildak = 0.0
+                    if 'mkt_levant' not in st.session_state: st.session_state.mkt_levant = 0.0
+                    if 'mkt_usd' not in st.session_state: st.session_state.mkt_usd = 34.50
+                    if 'mkt_eur' not in st.session_state: st.session_state.mkt_eur = 37.20
+
+                    # Pre-load Logic
+                    if st.session_state.edit_market_id and not st.session_state.mkt_data_loaded:
+                        res = supabase.table("market_prices").select("*").eq("id", st.session_state.edit_market_id).execute()
+                        if res.data:
+                            row = res.data[0]
+                            try: st.session_state.mkt_date = datetime.strptime(row['date'], '%Y-%m-%d').date()
+                            except: pass
+                            st.session_state.mkt_tombul = row['price_tombul']
+                            st.session_state.mkt_cakildak = row['price_cakildak']
+                            st.session_state.mkt_levant = row['price_levant']
+                            st.session_state.mkt_usd = row['rate_usd_try']
+                            st.session_state.mkt_eur = row['rate_eur_try']
+                            st.session_state.mkt_data_loaded = True
+                        else:
+                            st.session_state.edit_market_id = None
+
+                    edit_mode = st.session_state.edit_market_id is not None
+                    label = f"Update Record #{st.session_state.edit_market_id}" if edit_mode else "Save Entry"
+
+                    if edit_mode:
+                        if st.button("Cancel Edit", key="cancel_mkt"):
+                            st.session_state.edit_market_id = None
+                            st.session_state.mkt_data_loaded = False
+                            for k in ['mkt_tombul', 'mkt_cakildak', 'mkt_levant']: st.session_state[k] = 0.0
+                            st.rerun()
+
+                    # Fetch Button container
                     with st.container():
                         c_date, c_time, c_btn = st.columns([2, 2, 2])
-                        d_date = c_date.date_input("Date", value=datetime.now() - timedelta(days=1))
-                        t_time = c_time.time_input("Time (HH:MM)", value=datetime.now().time(), step=60)
+                        d_in = c_date.date_input("Date", key="mkt_date")
+                        t_in = c_time.time_input("Time (HH:MM)", value=datetime.now().time()) # Time not stored for market currently, but needed for fetch
                         c_btn.write("")
-                        if c_btn.button("Fetch exchange rates"):
-                            with st.spinner("Fetching historical rates..."):
-                                fetched = get_historical_rates(d_date, t_time)
+                        if c_btn.button("Fetch rates", key="mkt_fetch"):
+                            with st.spinner("Fetching..."):
+                                fetched = get_historical_rates(d_in, t_in)
                                 if fetched:
-                                    st.session_state.in_usd = fetched["USD"]
-                                    st.session_state.in_eur = fetched["EUR"]
-                                    st.session_state.rate_usd_val = fetched["USD"]
-                                    st.session_state.rate_eur_val = fetched["EUR"]
-                                    st.success(f"Fetched: USD {fetched['USD']:.4f}, EUR {fetched['EUR']:.4f}")
-                                else: st.warning("Could not fetch historical data. Using defaults/live.")
-                    
+                                    st.session_state.mkt_usd = fetched["USD"]
+                                    st.session_state.mkt_eur = fetched["EUR"]
+                                    st.success(f"Fetched!")
+                                else: st.warning("Failed.")
+
                     with st.form("price_input_form"):
-                        st.caption("Enter prices for ALL 3 types (TL/kg)."); c1, c2, c3 = st.columns(3); p_tombul = c1.number_input("Tombul", min_value=0.0, step=0.5); p_cakildak = c2.number_input("Cakildak", min_value=0.0, step=0.5); p_levant = c3.number_input("Levant", min_value=0.0, step=0.5)
+                        st.caption("Enter prices (TL/kg)."); c1, c2, c3 = st.columns(3)
+                        p_t = c1.number_input("Tombul", min_value=0.0, step=0.5, key="mkt_tombul")
+                        p_c = c2.number_input("Cakildak", min_value=0.0, step=0.5, key="mkt_cakildak")
+                        p_l = c3.number_input("Levant", min_value=0.0, step=0.5, key="mkt_levant")
                         st.markdown("---"); st.write("**Exchange Rates**"); c4, c5 = st.columns(2)
-                        r_usd = c4.number_input("USD/TRY Rate", min_value=0.0, step=0.01, format="%.4f", key="in_usd")
-                        r_eur = c5.number_input("EUR/TRY Rate", min_value=0.0, step=0.01, format="%.4f", key="in_eur")
-                        if st.form_submit_button("Save Entry"):
-                            if p_tombul > 0:
-                                payload = {"date": str(d_date), "price_tombul": p_tombul, "price_cakildak": p_cakildak, "price_levant": p_levant, "rate_usd_try": r_usd, "rate_eur_try": r_eur, "created_by": st.session_state.user['email']}
-                                try: supabase.table("market_prices").upsert(payload, on_conflict="date").execute(); st.success("Saved!"); time.sleep(1); st.rerun()
+                        r_u = c4.number_input("USD/TRY", min_value=0.0, step=0.01, format="%.4f", key="mkt_usd")
+                        r_e = c5.number_input("EUR/TRY", min_value=0.0, step=0.01, format="%.4f", key="mkt_eur")
+                        
+                        if st.form_submit_button(label):
+                            if p_t > 0:
+                                payload = {"date": str(d_in), "price_tombul": p_t, "price_cakildak": p_c, "price_levant": p_l, "rate_usd_try": r_u, "rate_eur_try": r_e, "created_by": st.session_state.user['email']}
+                                try:
+                                    if edit_mode:
+                                        supabase.table("market_prices").update(payload).eq("id", st.session_state.edit_market_id).execute()
+                                        st.success("Updated!")
+                                        st.session_state.edit_market_id = None
+                                        st.session_state.mkt_data_loaded = False
+                                    else:
+                                        supabase.table("market_prices").upsert(payload, on_conflict="date").execute()
+                                        st.success("Saved!")
+                                    
+                                    # Reset
+                                    for k in ['mkt_tombul', 'mkt_cakildak', 'mkt_levant']: st.session_state[k] = 0.0
+                                    time.sleep(1); st.rerun()
                                 except Exception as e: st.error(f"Error: {e}")
                     
                     df_hist = get_market_prices()
                     render_delete_table(df_hist, "market_prices", "date", "page_market")
 
+            # ADMIN: DOMESTIC INPUT (Already Done, kept consistent)
             if "Admin: Input Domestic Kernel Prices" in portal_tabs_map:
                 with tabs[portal_tabs_map.index("Admin: Input Domestic Kernel Prices")]:
                     st.header("📝 Input Domestic Kernel Prices (TL)")
                     
-                    # Manage state for inputs (for Editing and Fetching)
                     if 'dom_usd' not in st.session_state: st.session_state.dom_usd = 34.50
                     if 'dom_eur' not in st.session_state: st.session_state.dom_eur = 37.20
                     if 'l1' not in st.session_state: st.session_state.l1 = 0.0
@@ -559,12 +628,11 @@ else:
                     if 'dom_date' not in st.session_state: st.session_state.dom_date = datetime.now().date()
                     if 'dom_time' not in st.session_state: st.session_state.dom_time = datetime.now().time()
 
-                    # --- PRE-LOAD: ONLY IF NOT LOADED YET ---
+                    # Pre-load Logic
                     if st.session_state.edit_domestic_id and not st.session_state.dom_data_loaded:
                         res = supabase.table("domestic_kernel_prices").select("*").eq("id", st.session_state.edit_domestic_id).execute()
                         if res.data:
                             row = res.data[0]
-                            # Update session state keys for widgets
                             try: st.session_state.dom_date = datetime.strptime(row['date'], '%Y-%m-%d').date()
                             except: pass
                             try: st.session_state.dom_time = datetime.strptime(str(row['time_of_day']), "%H:%M:%S").time()
@@ -580,18 +648,16 @@ else:
                             st.session_state.cur = row.get('price_curuk', 0.0)
                             st.session_state.dom_usd = row.get('rate_usd_try', 0.0)
                             st.session_state.dom_eur = row.get('rate_eur_try', 0.0)
-                            st.session_state.dom_data_loaded = True # MARK AS LOADED
+                            st.session_state.dom_data_loaded = True
                         else:
-                            st.error("Could not load record.")
                             st.session_state.edit_domestic_id = None
 
-                    # --- RESET: IF CANCELLED OR SAVED ---
+                    # Reset Logic
                     if st.session_state.reset_domestic_form:
                         for k in ['l1','l2','l3','g1','g2','g3','bur','cik','cur']: st.session_state[k] = 0.0
                         st.session_state.dom_data_loaded = False
                         st.session_state.reset_domestic_form = False
 
-                    # Success Msg
                     if st.session_state.domestic_success_msg:
                         st.success(st.session_state.domestic_success_msg)
                         st.session_state.domestic_success_msg = None
@@ -617,56 +683,33 @@ else:
                         st.info(f"✏️ Editing mode active for ID {st.session_state.edit_domestic_id}")
                         if st.button("Cancel Edit"):
                             st.session_state.edit_domestic_id = None
-                            st.session_state.reset_domestic_form = True # Trigger safe reset
+                            st.session_state.reset_domestic_form = True
                             st.rerun()
 
                     with st.form("domestic_input_form"):
                         st.subheader("Product Prices (TL/kg)")
                         c1, c2, c3 = st.columns(3)
                         with c1:
-                            st.markdown("**Levant**")
-                            p_l1 = st.number_input("11-13mm", min_value=0.0, step=0.5, key="l1")
-                            p_l2 = st.number_input("12-13mm", min_value=0.0, step=0.5, key="l2")
-                            p_l3 = st.number_input("13-15mm", min_value=0.0, step=0.5, key="l3")
+                            st.markdown("**Levant**"); p_l1 = st.number_input("11-13mm", min_value=0.0, step=0.5, key="l1"); p_l2 = st.number_input("12-13mm", min_value=0.0, step=0.5, key="l2"); p_l3 = st.number_input("13-15mm", min_value=0.0, step=0.5, key="l3")
                         with c2:
-                            st.markdown("**Giresun**")
-                            p_g1 = st.number_input("11-13mm", min_value=0.0, step=0.5, key="g1")
-                            p_g2 = st.number_input("12-13mm", min_value=0.0, step=0.5, key="g2")
-                            p_g3 = st.number_input("13-15mm", min_value=0.0, step=0.5, key="g3")
+                            st.markdown("**Giresun**"); p_g1 = st.number_input("11-13mm", min_value=0.0, step=0.5, key="g1"); p_g2 = st.number_input("12-13mm", min_value=0.0, step=0.5, key="g2"); p_g3 = st.number_input("13-15mm", min_value=0.0, step=0.5, key="g3")
                         with c3:
-                            st.markdown("**Other**")
-                            p_bur = st.number_input("Burusuk", min_value=0.0, step=0.5, key="bur")
-                            p_cik = st.number_input("Cikinti", min_value=0.0, step=0.5, key="cik")
-                            p_cur = st.number_input("Curuk", min_value=0.0, step=0.5, key="cur")
+                            st.markdown("**Other**"); p_bur = st.number_input("Burusuk", min_value=0.0, step=0.5, key="bur"); p_cik = st.number_input("Cikinti", min_value=0.0, step=0.5, key="cik"); p_cur = st.number_input("Curuk", min_value=0.0, step=0.5, key="cur")
 
-                        st.markdown("---")
-                        st.write("**Exchange Rates (for record)**")
-                        ce1, ce2 = st.columns(2)
+                        st.markdown("---"); st.write("**Exchange Rates**"); ce1, ce2 = st.columns(2)
                         r_usd_dom = ce1.number_input("USD/TRY", min_value=0.0, step=0.01, format="%.4f", key="dom_usd")
                         r_eur_dom = ce2.number_input("EUR/TRY", min_value=0.0, step=0.01, format="%.4f", key="dom_eur")
 
                         if st.form_submit_button(form_label):
-                            # --- AUTO-FILL LOGIC (Only for New Entries) ---
-                            final_vals = {
-                                "price_levant_11_13": p_l1, "price_levant_12_13": p_l2, "price_levant_13_15": p_l3,
-                                "price_giresun_11_13": p_g1, "price_giresun_12_13": p_g2, "price_giresun_13_15": p_g3,
-                                "price_burusuk": p_bur, "price_cikinti": p_cik, "price_curuk": p_cur
-                            }
+                            final_vals = {"price_levant_11_13": p_l1, "price_levant_12_13": p_l2, "price_levant_13_15": p_l3, "price_giresun_11_13": p_g1, "price_giresun_12_13": p_g2, "price_giresun_13_15": p_g3, "price_burusuk": p_bur, "price_cikinti": p_cik, "price_curuk": p_cur}
                             
-                            if not edit_mode: # Only autofill if NOT editing
+                            if not edit_mode:
                                 last_entry = get_last_domestic_entry()
                                 if last_entry:
                                     for k, v in final_vals.items():
-                                        if v == 0.0:
-                                            final_vals[k] = last_entry.get(k, 0.0)
+                                        if v == 0.0: final_vals[k] = last_entry.get(k, 0.0)
                             
-                            # Prepare Payload
-                            payload = {
-                                "date": str(d_date_dom),
-                                "time_of_day": str(t_time_dom),
-                                "rate_usd_try": r_usd_dom, "rate_eur_try": r_eur_dom,
-                                "created_by": st.session_state.user['email']
-                            }
+                            payload = {"date": str(d_date_dom), "time_of_day": str(t_time_dom), "rate_usd_try": r_usd_dom, "rate_eur_try": r_eur_dom, "created_by": st.session_state.user['email']}
                             payload.update(final_vals)
 
                             try:
@@ -674,12 +717,11 @@ else:
                                     supabase.table("domestic_kernel_prices").update(payload).eq("id", st.session_state.edit_domestic_id).execute()
                                     st.session_state.domestic_success_msg = "Updated successfully!"
                                     st.session_state.edit_domestic_id = None
-                                    st.session_state.reset_domestic_form = True # Trigger safe reset
+                                    st.session_state.reset_domestic_form = True
                                 else:
                                     supabase.table("domestic_kernel_prices").insert(payload).execute()
-                                    st.session_state.domestic_success_msg = "Saved (with auto-fill applied)!"
-                                    st.session_state.reset_domestic_form = True # Trigger safe reset
-                                
+                                    st.session_state.domestic_success_msg = "Saved!"
+                                    st.session_state.reset_domestic_form = True
                                 st.rerun()
                             except Exception as e: st.error(f"Error: {e}")
 
