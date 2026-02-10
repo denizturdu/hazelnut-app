@@ -29,6 +29,7 @@ if 'delete_confirm_id' not in st.session_state: st.session_state.delete_confirm_
 # Pagination States
 if 'page_export' not in st.session_state: st.session_state.page_export = 0
 if 'page_market' not in st.session_state: st.session_state.page_market = 0
+if 'page_domestic' not in st.session_state: st.session_state.page_domestic = 0
 
 CUSTOMER_PORTAL_NAME = "🌍 Avella Customer Portal"
 
@@ -47,7 +48,14 @@ TAB_PERMISSIONS = {
     1: {11: "🏪 Şube Alım (Branch)", 12: "🏭 Fabrika Alım (Factory)"},
     4: {41: "👥 User Permissions", 42: "📦 Material Definitions", 43: "📜 Login Logs"},
     7: {71: "➕ Yeni Spesifikasyon", 72: "📜 Listele/Güncelle"},
-    9: {91: "Market Updates (Read)", 92: "Export Figures (Read)", 93: "Admin: Export Input", 94: "Admin: Price Input"}
+    9: {
+        91: "Inshell Market (Read)", 
+        92: "Export Figures (Read)", 
+        93: "Admin: Export Input", 
+        94: "Admin: Inshell Input",
+        95: "Domestic Kernel (Read)",
+        96: "Admin: Domestic Input"
+    }
 }
 
 # --- HELPER DATA ---
@@ -79,13 +87,20 @@ def get_market_prices():
         return df
     except: return pd.DataFrame()
 
+def get_domestic_prices():
+    try:
+        response = supabase.table("domestic_kernel_prices").select("*").order("date", desc=False).limit(3000).execute()
+        df = pd.DataFrame(response.data)
+        if not df.empty: df['date'] = pd.to_datetime(df['date'])
+        return df
+    except: return pd.DataFrame()
+
 def get_export_figures():
     try:
         response = supabase.table("export_figures").select("*").order("week_ending_date", desc=False).execute()
         df = pd.DataFrame(response.data)
         if not df.empty:
             df['week_ending_date'] = pd.to_datetime(df['week_ending_date'])
-            # Calc Avg Price: USD / (Tons * 1000)
             df['avg_kg_price'] = df.apply(lambda x: x['total_export_value_usd'] / (x['total_metric_tons'] * 1000) if x['total_metric_tons'] > 0 else 0, axis=1)
             df['price_change'] = df['avg_kg_price'].diff()
         return df
@@ -226,12 +241,21 @@ def render_delete_table(df, table_name, date_col, page_state_key):
     # Header
     st.markdown("#### 📜 Recent Entries")
     
+    # --- TABLE CONFIGURATION ---
     if table_name == "export_figures":
         cols_cfg = [2, 2, 2, 2, 2, 1] 
         headers = ["Week End", "Tons", "Value ($)", "Avg Price", "Change", "Action"]
-    else: 
+    elif table_name == "market_prices": 
         cols_cfg = [2, 1, 1, 1, 1, 1, 1]
         headers = ["Date", "Tombul", "Cakildak", "Levant", "USD", "EUR", "Action"]
+    elif table_name == "domestic_kernel_prices":
+        # Date, Time, L11, L12, L13, G11, G12, G13, Bur, Cik, Cur, USD, EUR, Action
+        # 14 columns. Need tight spacing.
+        cols_cfg = [1.5, 1, 1,1,1, 1,1,1, 1,1,1, 1,1, 1]
+        headers = ["Date", "Time", "L11", "L12", "L13", "G11", "G12", "G13", "Bur", "Cik", "Cur", "USD", "EUR", "Act"]
+    else:
+        st.error("Unknown table config")
+        return
 
     h_cols = st.columns(cols_cfg)
     for i, h in enumerate(headers): h_cols[i].markdown(f"**{h}**")
@@ -246,13 +270,27 @@ def render_delete_table(df, table_name, date_col, page_state_key):
             r_cols[2].write(f"${row['total_export_value_usd']:,.0f}")
             r_cols[3].write(f"${row.get('avg_kg_price', 0):.2f}")
             r_cols[4].write(f"{row.get('price_change', 0):+.2f}")
-        else:
+        elif table_name == "market_prices":
             r_cols[0].write(row['date'].strftime('%Y-%m-%d'))
             r_cols[1].write(f"{row['price_tombul']:.2f}")
             r_cols[2].write(f"{row['price_cakildak']:.2f}")
             r_cols[3].write(f"{row['price_levant']:.2f}")
             r_cols[4].write(f"{row['rate_usd_try']:.4f}")
             r_cols[5].write(f"{row['rate_eur_try']:.4f}")
+        elif table_name == "domestic_kernel_prices":
+             r_cols[0].write(row['date'].strftime('%Y-%m-%d'))
+             r_cols[1].write(str(row['time_of_day'])[:5]) # format HH:MM
+             r_cols[2].write(f"{row.get('price_levant_11_13',0):.0f}")
+             r_cols[3].write(f"{row.get('price_levant_12_13',0):.0f}")
+             r_cols[4].write(f"{row.get('price_levant_13_15',0):.0f}")
+             r_cols[5].write(f"{row.get('price_giresun_11_13',0):.0f}")
+             r_cols[6].write(f"{row.get('price_giresun_12_13',0):.0f}")
+             r_cols[7].write(f"{row.get('price_giresun_13_15',0):.0f}")
+             r_cols[8].write(f"{row.get('price_burusuk',0):.0f}")
+             r_cols[9].write(f"{row.get('price_cikinti',0):.0f}")
+             r_cols[10].write(f"{row.get('price_curuk',0):.0f}")
+             r_cols[11].write(f"{row.get('rate_usd_try',0):.2f}")
+             r_cols[12].write(f"{row.get('rate_eur_try',0):.2f}")
 
         target = f"{table_name}_{row['id']}"
         if st.session_state.delete_confirm_id == target:
@@ -268,31 +306,13 @@ def render_delete_table(df, table_name, date_col, page_state_key):
     
     st.markdown("---")
     
-    # Navigation Buttons (5 Columns: First, Prev, Info, Next, Last)
+    # Navigation Buttons
     c_first, c_prev, c_info, c_next, c_last = st.columns([1, 1, 2, 1, 1])
-    
-    # First Page
-    if c_first.button("⏮️ First", key=f"f_{table_name}", disabled=(current_page == 0)):
-        st.session_state[page_state_key] = 0
-        st.rerun()
-
-    # Previous Page
-    if c_prev.button("⬅️ Prev", key=f"p_{table_name}", disabled=(current_page == 0)):
-        st.session_state[page_state_key] -= 1
-        st.rerun()
-            
-    # Page Info
+    if c_first.button("⏮️ First", key=f"f_{table_name}", disabled=(current_page == 0)): st.session_state[page_state_key] = 0; st.rerun()
+    if c_prev.button("⬅️ Prev", key=f"p_{table_name}", disabled=(current_page == 0)): st.session_state[page_state_key] -= 1; st.rerun()
     c_info.markdown(f"<div style='text-align: center; line-height: 2.5;'>Page <b>{current_page + 1}</b> of <b>{total_pages}</b></div>", unsafe_allow_html=True)
-    
-    # Next Page
-    if c_next.button("Next ➡️", key=f"n_{table_name}", disabled=(current_page >= total_pages - 1)):
-        st.session_state[page_state_key] += 1
-        st.rerun()
-
-    # Last Page
-    if c_last.button("Last ⏭️", key=f"l_{table_name}", disabled=(current_page >= total_pages - 1)):
-        st.session_state[page_state_key] = total_pages - 1
-        st.rerun()
+    if c_next.button("Next ➡️", key=f"n_{table_name}", disabled=(current_page >= total_pages - 1)): st.session_state[page_state_key] += 1; st.rerun()
+    if c_last.button("Last ⏭️", key=f"l_{table_name}", disabled=(current_page >= total_pages - 1)): st.session_state[page_state_key] = total_pages - 1; st.rerun()
 
 # ==========================================
 # 🔐 AUTHENTICATION
@@ -388,9 +408,11 @@ else:
         # Build Tabs based on permissions (ID 9 permissions)
         portal_tabs_map = []
         if has_access(91): portal_tabs_map.append("Inshell Hazelnuts and Market Updates")
+        if has_access(95): portal_tabs_map.append("Domestic Kernel Prices (Graph)")
         if has_access(92): portal_tabs_map.append("Weekly Export Figures")
         if has_access(93): portal_tabs_map.append("Admin: Input Export Figures")
         if has_access(94): portal_tabs_map.append("Admin: Input Inshell Market Price")
+        if has_access(96): portal_tabs_map.append("Admin: Input Domestic Kernel Prices")
         
         if not portal_tabs_map:
             st.error("You have access to the Portal module but no specific tabs.")
@@ -428,6 +450,39 @@ else:
                         st.plotly_chart(build_chart("2. Inshell Prices (USD/kg)", 'USD', "Price (USD)"), use_container_width=True)
                         st.plotly_chart(build_chart("3. Inshell Prices (EUR/kg)", 'EUR', "Price (EUR)"), use_container_width=True)
                     else: st.info("No market price data available yet.")
+
+            # TAB: DOMESTIC KERNEL PRICES GRAPH
+            if "Domestic Kernel Prices (Graph)" in portal_tabs_map:
+                with tabs[portal_tabs_map.index("Domestic Kernel Prices (Graph)")]:
+                    st.header("🏢 Domestic Kernel Prices (TL)")
+                    df_dom = get_domestic_prices()
+                    if not df_dom.empty:
+                        fig = go.Figure()
+                        # Map DB columns to Display Names
+                        lines_map = {
+                            "price_levant_11_13": "Levant 11-13",
+                            "price_levant_12_13": "Levant 12-13",
+                            "price_levant_13_15": "Levant 13-15",
+                            "price_giresun_11_13": "Giresun 11-13",
+                            "price_giresun_12_13": "Giresun 12-13",
+                            "price_giresun_13_15": "Giresun 13-15",
+                            "price_burusuk": "Burusuk",
+                            "price_cikinti": "Cikinti",
+                            "price_curuk": "Curuk"
+                        }
+                        for col, name in lines_map.items():
+                            if col in df_dom.columns:
+                                fig.add_trace(go.Scatter(x=df_dom['date'], y=df_dom[col], name=name, mode='lines'))
+                        
+                        fig.update_layout(
+                            title=dict(text="Domestic Kernel Prices (TL/kg)"),
+                            xaxis=dict(title="Date", rangeslider=dict(visible=True), type="date"),
+                            yaxis=dict(title="Price (TL)"),
+                            legend=dict(orientation="h", yanchor="top", y=-0.3, xanchor="center", x=0.5),
+                            height=600
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                    else: st.info("No domestic price data available.")
 
             # TAB 2: EXPORT
             if "Weekly Export Figures" in portal_tabs_map:
@@ -509,6 +564,74 @@ else:
                     
                     df_hist = get_market_prices()
                     render_delete_table(df_hist, "market_prices", "date", "page_market")
+
+            if "Admin: Input Domestic Kernel Prices" in portal_tabs_map:
+                with tabs[portal_tabs_map.index("Admin: Input Domestic Kernel Prices")]:
+                    st.header("📝 Input Domestic Kernel Prices (TL)")
+                    
+                    # Reuse same state variables for fetch as they are common currency rates
+                    if 'rate_usd_val' not in st.session_state: st.session_state.rate_usd_val = 34.50
+                    if 'rate_eur_val' not in st.session_state: st.session_state.rate_eur_val = 37.20
+                    if 'dom_usd' not in st.session_state: st.session_state.dom_usd = 34.50
+                    if 'dom_eur' not in st.session_state: st.session_state.dom_eur = 37.20
+
+                    with st.container():
+                        c_date, c_time, c_btn = st.columns([2, 2, 2])
+                        d_date_dom = c_date.date_input("Date", value=datetime.now() - timedelta(days=1), key="dom_date")
+                        t_time_dom = c_time.time_input("Time (HH:MM)", value=datetime.now().time(), key="dom_time")
+                        c_btn.write("")
+                        if c_btn.button("Fetch exchange rates", key="dom_fetch"):
+                            with st.spinner("Fetching..."):
+                                fetched = get_historical_rates(d_date_dom, t_time_dom)
+                                if fetched:
+                                    st.session_state.dom_usd = fetched["USD"]
+                                    st.session_state.dom_eur = fetched["EUR"]
+                                    st.success(f"Fetched: USD {fetched['USD']:.4f}")
+                                else: st.warning("Could not fetch.")
+                    
+                    with st.form("domestic_input_form"):
+                        st.subheader("Product Prices (TL/kg)")
+                        c1, c2, c3 = st.columns(3)
+                        with c1:
+                            st.markdown("**Levant**")
+                            p_l1 = st.number_input("11-13mm", min_value=0.0, step=0.5, key="l1")
+                            p_l2 = st.number_input("12-13mm", min_value=0.0, step=0.5, key="l2")
+                            p_l3 = st.number_input("13-15mm", min_value=0.0, step=0.5, key="l3")
+                        with c2:
+                            st.markdown("**Giresun**")
+                            p_g1 = st.number_input("11-13mm", min_value=0.0, step=0.5, key="g1")
+                            p_g2 = st.number_input("12-13mm", min_value=0.0, step=0.5, key="g2")
+                            p_g3 = st.number_input("13-15mm", min_value=0.0, step=0.5, key="g3")
+                        with c3:
+                            st.markdown("**Other**")
+                            p_bur = st.number_input("Burusuk", min_value=0.0, step=0.5, key="bur")
+                            p_cik = st.number_input("Cikinti", min_value=0.0, step=0.5, key="cik")
+                            p_cur = st.number_input("Curuk", min_value=0.0, step=0.5, key="cur")
+
+                        st.markdown("---")
+                        st.write("**Exchange Rates (for record)**")
+                        ce1, ce2 = st.columns(2)
+                        r_usd_dom = ce1.number_input("USD/TRY", min_value=0.0, step=0.01, format="%.4f", key="dom_usd")
+                        r_eur_dom = ce2.number_input("EUR/TRY", min_value=0.0, step=0.01, format="%.4f", key="dom_eur")
+
+                        if st.form_submit_button("Save Domestic Entry"):
+                            payload = {
+                                "date": str(d_date_dom),
+                                "time_of_day": str(t_time_dom),
+                                "price_levant_11_13": p_l1, "price_levant_12_13": p_l2, "price_levant_13_15": p_l3,
+                                "price_giresun_11_13": p_g1, "price_giresun_12_13": p_g2, "price_giresun_13_15": p_g3,
+                                "price_burusuk": p_bur, "price_cikinti": p_cik, "price_curuk": p_cur,
+                                "rate_usd_try": r_usd_dom, "rate_eur_try": r_eur_dom,
+                                "created_by": st.session_state.user['email']
+                            }
+                            try:
+                                supabase.table("domestic_kernel_prices").insert(payload).execute()
+                                st.success("Saved!")
+                                time.sleep(1); st.rerun()
+                            except Exception as e: st.error(f"Error: {e}")
+
+                    df_dom_hist = get_domestic_prices()
+                    render_delete_table(df_dom_hist, "domestic_kernel_prices", "date", "page_domestic")
 
     # ==========================
     # MODULE 1: COMBINED
@@ -657,6 +780,8 @@ else:
                                 if st.checkbox("  └ Export", key="c_m9_92"): new_mods.append(92)
                                 if st.checkbox("  └ Admin: Export", key="c_m9_93"): new_mods.append(93)
                                 if st.checkbox("  └ Admin: Prices", key="c_m9_94"): new_mods.append(94)
+                                if st.checkbox("  └ Domestic", key="c_m9_95"): new_mods.append(95)
+                                if st.checkbox("  └ Admin: Domestic", key="c_m9_96"): new_mods.append(96)
 
                             if st.form_submit_button("Create"):
                                 success, msg = register_user(email, pwd, role=role_sel)
@@ -710,6 +835,8 @@ else:
                                     if st.checkbox("  └ Export", key="e_m9_92", value=(92 in cur)): u_mods.append(92)
                                     if st.checkbox("  └ Admin: Export", key="e_m9_93", value=(93 in cur)): u_mods.append(93)
                                     if st.checkbox("  └ Admin: Prices", key="e_m9_94", value=(94 in cur)): u_mods.append(94)
+                                    if st.checkbox("  └ Domestic", key="e_m9_95", value=(95 in cur)): u_mods.append(95)
+                                    if st.checkbox("  └ Admin: Domestic", key="e_m9_96", value=(96 in cur)): u_mods.append(96)
                                 
                                 if st.form_submit_button("Update"):
                                     update_user_permissions(target['id'], new_app, u_mods, new_r)
