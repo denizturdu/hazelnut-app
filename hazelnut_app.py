@@ -46,6 +46,7 @@ MODULE_MAP = {
     9: CUSTOMER_PORTAL_NAME 
 }
 
+# Key = Module ID, Value = {Tab ID: Tab Name}
 TAB_PERMISSIONS = {
     1: {11: "🏪 Şube Alım (Branch)", 12: "🏭 Fabrika Alım (Factory)"},
     4: {41: "👥 User Permissions", 42: "📦 Material Definitions", 43: "📜 Login Logs"},
@@ -252,41 +253,22 @@ def render_delete_table(df, table_name, date_col, page_state_key):
              r_cols[8].write(f"{row.get('price_burusuk',0):.0f}"); r_cols[9].write(f"{row.get('price_cikinti',0):.0f}"); r_cols[10].write(f"{row.get('price_curuk',0):.0f}")
              r_cols[11].write(f"{row.get('rate_usd_try',0):.2f}"); r_cols[12].write(f"{row.get('rate_eur_try',0):.2f}")
         
-        # Action Buttons
         target = f"{table_name}_{row['id']}"
         with r_cols[-1]:
-            # Edit Button (Only for domestic now, or expandable later)
+            # Edit Button (Refactored to avoid StreamlitAPIException)
             if table_name == "domestic_kernel_prices":
                 c_edit, c_del = st.columns(2)
                 if c_edit.button("✏️", key=f"edit_{target}", help="Edit Entry"):
-                    # Load data into session state
-                    st.session_state['edit_domestic_id'] = row['id']
-                    st.session_state['dom_date'] = row['date']
-                    try:
-                        st.session_state['dom_time'] = datetime.strptime(str(row['time_of_day']), "%H:%M:%S").time()
-                    except:
-                        st.session_state['dom_time'] = datetime.now().time()
-                    st.session_state['l1'] = row.get('price_levant_11_13', 0.0)
-                    st.session_state['l2'] = row.get('price_levant_12_13', 0.0)
-                    st.session_state['l3'] = row.get('price_levant_13_15', 0.0)
-                    st.session_state['g1'] = row.get('price_giresun_11_13', 0.0)
-                    st.session_state['g2'] = row.get('price_giresun_12_13', 0.0)
-                    st.session_state['g3'] = row.get('price_giresun_13_15', 0.0)
-                    st.session_state['bur'] = row.get('price_burusuk', 0.0)
-                    st.session_state['cik'] = row.get('price_cikinti', 0.0)
-                    st.session_state['cur'] = row.get('price_curuk', 0.0)
-                    st.session_state['dom_usd'] = row.get('rate_usd_try', 0.0)
-                    st.session_state['dom_eur'] = row.get('rate_eur_try', 0.0)
+                    # ONLY SET ID AND RERUN
+                    st.session_state.edit_domestic_id = row['id']
                     st.rerun()
                 
-                # Delete Button
                 if st.session_state.delete_confirm_id == target:
                     if c_del.button("✅", key=f"yes_{target}"): supabase.table(table_name).delete().eq("id", row['id']).execute(); st.session_state.delete_confirm_id = None; time.sleep(0.5); st.rerun()
                     if c_del.button("❌", key=f"no_{target}"): st.session_state.delete_confirm_id = None; st.rerun()
                 else:
                     if c_del.button("🗑️", key=f"del_{target}"): st.session_state.delete_confirm_id = target; st.rerun()
             else:
-                # Standard Delete for other tables
                 if st.session_state.delete_confirm_id == target:
                     c1, c2 = st.columns(2)
                     if c1.button("✅", key=f"yes_{target}"): supabase.table(table_name).delete().eq("id", row['id']).execute(); st.session_state.delete_confirm_id = None; time.sleep(0.5); st.rerun()
@@ -571,6 +553,31 @@ else:
                     if 'cur' not in st.session_state: st.session_state.cur = 0.0
                     if 'dom_date' not in st.session_state: st.session_state.dom_date = datetime.now().date()
                     if 'dom_time' not in st.session_state: st.session_state.dom_time = datetime.now().time()
+
+                    # --- CRITICAL: PRE-LOAD EDIT DATA BEFORE WIDGETS RENDER ---
+                    if st.session_state.edit_domestic_id:
+                        res = supabase.table("domestic_kernel_prices").select("*").eq("id", st.session_state.edit_domestic_id).execute()
+                        if res.data:
+                            row = res.data[0]
+                            # Update session state keys for widgets
+                            try: st.session_state.dom_date = datetime.strptime(row['date'], '%Y-%m-%d').date()
+                            except: pass
+                            try: st.session_state.dom_time = datetime.strptime(str(row['time_of_day']), "%H:%M:%S").time()
+                            except: pass
+                            st.session_state.l1 = row.get('price_levant_11_13', 0.0)
+                            st.session_state.l2 = row.get('price_levant_12_13', 0.0)
+                            st.session_state.l3 = row.get('price_levant_13_15', 0.0)
+                            st.session_state.g1 = row.get('price_giresun_11_13', 0.0)
+                            st.session_state.g2 = row.get('price_giresun_12_13', 0.0)
+                            st.session_state.g3 = row.get('price_giresun_13_15', 0.0)
+                            st.session_state.bur = row.get('price_burusuk', 0.0)
+                            st.session_state.cik = row.get('price_cikinti', 0.0)
+                            st.session_state.cur = row.get('price_curuk', 0.0)
+                            st.session_state.dom_usd = row.get('rate_usd_try', 0.0)
+                            st.session_state.dom_eur = row.get('rate_eur_try', 0.0)
+                        else:
+                            st.error("Could not load record.")
+                            st.session_state.edit_domestic_id = None
 
                     with st.container():
                         c_date, c_time, c_btn = st.columns([2, 2, 2])
