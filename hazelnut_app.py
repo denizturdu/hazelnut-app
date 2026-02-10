@@ -37,6 +37,10 @@ if 'dom_data_loaded' not in st.session_state: st.session_state.dom_data_loaded =
 if 'exp_data_loaded' not in st.session_state: st.session_state.exp_data_loaded = False
 if 'mkt_data_loaded' not in st.session_state: st.session_state.mkt_data_loaded = False
 
+# --- RESET FLAGS ---
+if 'reset_domestic_form' not in st.session_state: st.session_state.reset_domestic_form = False
+if 'domestic_success_msg' not in st.session_state: st.session_state.domestic_success_msg = None
+
 # Pagination States
 if 'page_export' not in st.session_state: st.session_state.page_export = 0
 if 'page_market' not in st.session_state: st.session_state.page_market = 0
@@ -458,7 +462,15 @@ else:
                         fig.add_trace(go.Scatter(x=df_export['week_ending_date'], y=df_export['total_metric_tons'], name="Metric Tons", yaxis="y1", line=dict(color='blue', width=3)))
                         fig.add_trace(go.Scatter(x=df_export['week_ending_date'], y=df_export['total_export_value_usd'], name="Total Value ($)", yaxis="y2", line=dict(color='green', width=3)))
                         fig.add_trace(go.Scatter(x=df_export['week_ending_date'], y=df_export['avg_kg_price'], name="Avg KG Price ($)", yaxis="y3", line=dict(color='red', width=3, dash='dot')))
-                        fig.update_layout(title=dict(text="Weekly Export Correlations"), xaxis=dict(domain=[0.05, 0.9], rangeslider=dict(visible=True), type="date"), yaxis=dict(title=dict(text="Metric Tons", font=dict(color="blue")), tickfont=dict(color="blue"), dtick=500), yaxis2=dict(title=dict(text="Total Value ($)", font=dict(color="green")), tickfont=dict(color="green"), anchor="x", overlaying="y", side="right", dtick=5000000), yaxis3=dict(title=dict(text="Avg Price ($/kg)", font=dict(color="red")), tickfont=dict(color="red"), anchor="free", overlaying="y", side="right", position=0.95, range=[5, 20]), legend=dict(orientation="h", yanchor="top", y=-0.3, xanchor="center", x=0.5), height=600)
+                        fig.update_layout(
+                            title=dict(text="Weekly Export Correlations"), 
+                            xaxis=dict(domain=[0.05, 0.9], rangeslider=dict(visible=True), type="date"),
+                            yaxis=dict(title=dict(text="Metric Tons", font=dict(color="blue")), tickfont=dict(color="blue"), dtick=500), 
+                            yaxis2=dict(title=dict(text="Total Value ($)", font=dict(color="green")), tickfont=dict(color="green"), anchor="x", overlaying="y", side="right", dtick=5000000), 
+                            yaxis3=dict(title=dict(text="Avg Price ($/kg)", font=dict(color="red")), tickfont=dict(color="red"), anchor="free", overlaying="y", side="right", position=0.95, range=[5, 20]), 
+                            legend=dict(orientation="h", yanchor="top", y=-0.3, xanchor="center", x=0.5),
+                            height=600
+                        )
                         st.plotly_chart(fig, use_container_width=True)
                     else: st.info("No export data available.")
 
@@ -653,7 +665,7 @@ else:
                             st.session_state.edit_domestic_id = None
 
                     # Reset Logic
-                    if st.session_state.reset_domestic_form:
+                    if st.session_state['reset_domestic_form']:
                         for k in ['l1','l2','l3','g1','g2','g3','bur','cik','cur']: st.session_state[k] = 0.0
                         st.session_state.dom_data_loaded = False
                         st.session_state.reset_domestic_form = False
