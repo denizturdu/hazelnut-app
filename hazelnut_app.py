@@ -30,6 +30,8 @@ if 'delete_confirm_id' not in st.session_state: st.session_state.delete_confirm_
 if 'page_export' not in st.session_state: st.session_state.page_export = 0
 if 'page_market' not in st.session_state: st.session_state.page_market = 0
 
+CUSTOMER_PORTAL_NAME = "🌍 Avella Customer Portal"
+
 # --- CONSTANTS & PERMISSIONS ---
 MODULE_MAP = {
     1: "1. Satın Alma ve Giriş İşlemleri",
@@ -37,16 +39,16 @@ MODULE_MAP = {
     5: "3. Stok Takibi",               
     7: "4. Kalite Kontrol",
     4: "5. Administrator Settings",    
-    6: "6. Offers"                     
+    6: "6. Offers",
+    9: CUSTOMER_PORTAL_NAME 
 }
 
 TAB_PERMISSIONS = {
     1: {11: "🏪 Şube Alım (Branch)", 12: "🏭 Fabrika Alım (Factory)"},
     4: {41: "👥 User Permissions", 42: "📦 Material Definitions", 43: "📜 Login Logs"},
-    7: {71: "➕ Yeni Spesifikasyon", 72: "📜 Listele/Güncelle"}
+    7: {71: "➕ Yeni Spesifikasyon", 72: "📜 Listele/Güncelle"},
+    9: {91: "Market Updates (Read)", 92: "Export Figures (Read)", 93: "Admin: Export Input", 94: "Admin: Price Input"}
 }
-
-CUSTOMER_PORTAL_NAME = "🌍 Avella Customer Portal"
 
 # --- HELPER DATA ---
 OFFER_CONSTANTS = {
@@ -103,66 +105,28 @@ def get_live_rates():
     return rates
 
 def get_historical_rates(date_obj, time_obj=None):
-    """
-    Fetches historical exchange rates using yfinance.
-    Tries to be smart: if recent, uses hourly data. If old, uses daily close.
-    """
-    if yf is None:
-        st.error("yfinance library not found. Please add 'yfinance' to requirements.txt")
-        return None
-
+    if yf is None: st.error("yfinance library not found. Please add 'yfinance' to requirements.txt"); return None
     try:
         tickers = ["TRY=X", "EURTRY=X"]
-        
-        # Widen window to catch weekends/holidays (look back 5 days from target)
-        # End date is exclusive, so +1
         end_date = date_obj + timedelta(days=1)
         start_date = date_obj - timedelta(days=5)
-        
-        # Try intraday first (1h)
         interval = "1h"
         data = yf.download(tickers, start=start_date, end=end_date, interval=interval, progress=False)
-        
         if data.empty:
-             # Fallback to daily
              interval = "1d"
              data = yf.download(tickers, start=start_date, end=end_date, interval=interval, progress=False)
-        
-        if data.empty:
-            return None
-            
-        # Extract Close data
-        try:
-            close_data = data['Close']
-        except KeyError:
-            return None
-            
-        # Filter to only include data BEFORE or AT the user's specific datetime
-        # We need to find the latest available price point relative to user input
-        
+        if data.empty: return None
+        try: close_data = data['Close']
+        except KeyError: return None
         target_dt = datetime.combine(date_obj, time_obj) if time_obj else datetime.combine(date_obj, datetime.max.time())
-        
-        # Normalize index to timezone-naive to compare with target_dt
         close_data.index = close_data.index.tz_localize(None)
-        
-        # Filter rows <= target_dt
         mask = close_data.index <= target_dt
         filtered = close_data[mask]
-        
-        if not filtered.empty:
-            last_row = filtered.iloc[-1]
-        else:
-            # If no data before target (rare with 5 day window), take the very first available in window
-            last_row = close_data.iloc[0]
-
-        final_usd = last_row.get('TRY=X')
-        final_eur = last_row.get('EURTRY=X')
-            
+        if not filtered.empty: last_row = filtered.iloc[-1]
+        else: last_row = close_data.iloc[0]
+        final_usd = last_row.get('TRY=X'); final_eur = last_row.get('EURTRY=X')
         return {"USD": float(final_usd) if final_usd else 0.0, "EUR": float(final_eur) if final_eur else 0.0}
-
-    except Exception as e:
-        print(f"Rate fetch error: {e}")
-        return None
+    except Exception as e: print(f"Rate fetch error: {e}"); return None
 
 def log_login(email):
     try: supabase.table("login_logs").insert({"email": email}).execute()
@@ -178,33 +142,27 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
     workbook = writer.book
     worksheet = workbook.add_worksheet('Offer Sheet')
     worksheet.set_tab_color('#107C41')
-
     header_format = workbook.add_format({'bold': True, 'font_size': 14, 'color': '#203764'})
     label_format = workbook.add_format({'bold': True, 'align': 'right', 'bg_color': '#f2f2f2', 'border': 1})
     input_format = workbook.add_format({'border': 1, 'bg_color': '#ffffff'})
     table_header_format = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'bg_color': '#4472C4', 'font_color': 'white', 'border': 1, 'text_wrap': True})
     linked_cell_format = workbook.add_format({'bg_color': '#E7E6E6', 'border': 1, 'italic': True, 'font_color': '#595959'})
     quality_header_format = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'bg_color': '#FFC000', 'font_color': 'black', 'border': 1, 'text_wrap': True})
-
     worksheet.write('A1', 'AVELLA OFFER SHEET', header_format)
     headers = [("Date:", "B3", header_data.get("date", "")), ("Offer No:", "D3", header_data.get("offer_no", "")), ("Validity:", "F3", header_data.get("validity", "")), ("Customer Name:", "B4", header_data.get("customer", "")), ("Cust. Ref:", "D4", header_data.get("cust_ref", "")), ("Avella Ref:", "F4", header_data.get("avella_ref", "")), ("Payment Terms:", "B5", header_data.get("payment", "")), ("Delivery Addr:", "D5", header_data.get("delivery", ""))]
     for label, cell, val in headers:
         worksheet.write(cell, label, label_format); col_letter = cell[0]; row_num = int(cell[1:]); input_cell = chr(ord(col_letter) + 1) + str(row_num); worksheet.write(input_cell, str(val), input_format)
     worksheet.merge_range('E5:G5', "", input_format)
-
     table_start_row = 8
     columns = ["Category", "Product Group", "Total Contract Volume (kg)", "Type/Process", "Variety", "Size", "Packaging", "Net Wgt (kg)", "Price", "Currency", "Incoterms", "Place of Delivery", "Minimum Order Quantity (kg)", "Shipment Schedule", "Payment Terms"]
     for i, col_name in enumerate(columns): worksheet.write(table_start_row, i, col_name, table_header_format); worksheet.set_column(i, i, 15)
-    
     worksheet.set_column('B:B', 20); worksheet.set_column('C:C', 20); worksheet.set_column('D:D', 25); worksheet.set_column('E:E', 20); worksheet.set_column('G:G', 25); worksheet.set_column('L:L', 20); worksheet.set_column('M:M', 25); worksheet.set_column('N:N', 20); worksheet.set_column('O:O', 20)
-
     if product_df is not None and not product_df.empty:
         for idx, row in product_df.iterrows():
             row_num = table_start_row + 1 + idx
             for col_idx, col_name in enumerate(columns):
                 val = row.get(col_name, "")
                 worksheet.write(row_num, col_idx, val, input_format)
-
     worksheet_qual = workbook.add_worksheet('Quality Parameters'); worksheet_qual.set_tab_color('#FFC000')
     qual_ident_cols = ["Product Group (Linked)", "Type (Linked)", "Variety (Linked)", "Size (Linked)"]
     used_params = set(DEFAULT_QUALITY_PARAMS.keys())
@@ -213,31 +171,22 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
         param_row_limit = max(100, len(product_df) + 5)
         if quality_override:
             for ridx, params in quality_override.items(): used_params.update(params.keys())
-    
     sorted_params = sorted(list(used_params))
     all_qual_cols = qual_ident_cols + sorted_params
-
     for i, col_name in enumerate(all_qual_cols): worksheet_qual.write(table_start_row, i, col_name, quality_header_format); worksheet_qual.set_column(i, i, 22) 
-
     for r_idx in range(param_row_limit):
         xl_row = table_start_row + 1 + r_idx + 1
         worksheet_row = table_start_row + 1 + r_idx
-        worksheet_qual.write_formula(worksheet_row, 0, f"='Offer Sheet'!B{xl_row}", linked_cell_format) 
-        worksheet_qual.write_formula(worksheet_row, 1, f"='Offer Sheet'!D{xl_row}", linked_cell_format) 
-        worksheet_qual.write_formula(worksheet_row, 2, f"='Offer Sheet'!E{xl_row}", linked_cell_format) 
-        worksheet_qual.write_formula(worksheet_row, 3, f"='Offer Sheet'!F{xl_row}", linked_cell_format) 
+        worksheet_qual.write_formula(worksheet_row, 0, f"='Offer Sheet'!B{xl_row}", linked_cell_format); worksheet_qual.write_formula(worksheet_row, 1, f"='Offer Sheet'!D{xl_row}", linked_cell_format); worksheet_qual.write_formula(worksheet_row, 2, f"='Offer Sheet'!E{xl_row}", linked_cell_format); worksheet_qual.write_formula(worksheet_row, 3, f"='Offer Sheet'!F{xl_row}", linked_cell_format) 
         row_custom_data = {}
         if quality_override and r_idx in quality_override: row_custom_data = quality_override[r_idx]
         for i, key in enumerate(sorted_params):
             val = row_custom_data.get(key, DEFAULT_QUALITY_PARAMS.get(key, ""))
             worksheet_qual.write(worksheet_row, 4 + i, val, input_format)
-
     ref_sheet = workbook.add_worksheet('ReferenceData'); ref_sheet.hide()
     def write_list_to_ref(header, data_list, col_idx):
         ref_sheet.write(0, col_idx, header); [ref_sheet.write(i + 1, col_idx, item) for i, item in enumerate(data_list)]; return f"=ReferenceData!${xlsxwriter.utility.xl_col_to_name(col_idx)}$2:${xlsxwriter.utility.xl_col_to_name(col_idx)}${len(data_list) + 1}"
-    
     cat_range = write_list_to_ref("Categories", OFFER_CONSTANTS["Categories"], 0); group_range = write_list_to_ref("Groups", OFFER_CONSTANTS["Product_Groups"], 1); type_range = write_list_to_ref("Types", OFFER_CONSTANTS["Product_Types"], 2); var_range = write_list_to_ref("Varieties", OFFER_CONSTANTS["Varieties"], 3); size_range = write_list_to_ref("Sizes", OFFER_CONSTANTS["Sizes"], 4); pack_range = write_list_to_ref("Packaging", OFFER_CONSTANTS["Packaging"], 5); curr_range = write_list_to_ref("Currencies", OFFER_CONSTANTS["Currencies"], 6); inco_range = write_list_to_ref("Incoterms", OFFER_CONSTANTS["Incoterms"], 7)
-    
     val_end = table_start_row + 1 + 100
     worksheet.data_validation(table_start_row + 1, 0, val_end, 0, {'validate': 'list', 'source': cat_range})
     worksheet.data_validation(table_start_row + 1, 1, val_end, 1, {'validate': 'list', 'source': group_range})
@@ -247,7 +196,6 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
     worksheet.data_validation(table_start_row + 1, 6, val_end, 6, {'validate': 'list', 'source': pack_range})
     worksheet.data_validation(table_start_row + 1, 9, val_end, 9, {'validate': 'list', 'source': curr_range})
     worksheet.data_validation(table_start_row + 1, 10, val_end, 10, {'validate': 'list', 'source': inco_range})
-
     writer.close(); output.seek(0); return output
 
 def render_delete_table(df, table_name, date_col, page_state_key):
@@ -401,7 +349,7 @@ else:
     if has_access(4): menu_mgmt.append(MODULE_MAP[4])
     if has_access(6): menu_mgmt.append(MODULE_MAP[6])
     
-    menu_prt.append(CUSTOMER_PORTAL_NAME)
+    if has_access(9): menu_prt.append(CUSTOMER_PORTAL_NAME)
 
     st.sidebar.markdown("---")
     
@@ -421,12 +369,13 @@ else:
                 st.session_state.active_module = val_mgmt
                 st.rerun()
 
-    st.sidebar.markdown("---")
-    with st.sidebar.expander("🤝 Customers & Partners", expanded=True):
-        val_prt = st.radio("Select Module", menu_prt, key="radio_prt", label_visibility="collapsed")
-        if st.button("Go to Portal"):
-            st.session_state.active_module = val_prt
-            st.rerun()
+    if menu_prt:
+        st.sidebar.markdown("---")
+        with st.sidebar.expander("🤝 Customers & Partners", expanded=True):
+            val_prt = st.radio("Select Module", menu_prt, key="radio_prt", label_visibility="collapsed")
+            if st.button("Go to Portal"):
+                st.session_state.active_module = val_prt
+                st.rerun()
 
     module = st.session_state.active_module
 
@@ -435,139 +384,131 @@ else:
     # ==========================
     if module == CUSTOMER_PORTAL_NAME:
         st.title(CUSTOMER_PORTAL_NAME)
-        portal_tabs = ["Inshell Hazelnuts and Market Updates", "Weekly Export Figures"]
-        if role == 'administrator': 
-            portal_tabs.append("Admin: Input Export Figures")
-            portal_tabs.append("Admin: Input Inshell Market Price")
         
-        tabs = st.tabs(portal_tabs)
+        # Build Tabs based on permissions (ID 9 permissions)
+        portal_tabs_map = []
+        if has_access(91): portal_tabs_map.append("Inshell Hazelnuts and Market Updates")
+        if has_access(92): portal_tabs_map.append("Weekly Export Figures")
+        if has_access(93): portal_tabs_map.append("Admin: Input Export Figures")
+        if has_access(94): portal_tabs_map.append("Admin: Input Inshell Market Price")
         
-        # TAB 1: INSHELL
-        with tabs[0]:
-            st.header("🌰 Market Updates & Inshell Prices")
-            df_prices = get_market_prices()
-            live_rates = get_live_rates()
-            with st.expander("Live Currency Rates (Auto-fetched)", expanded=True):
-                c1, c2 = st.columns(2)
-                c1.metric("USD/TRY", f"{live_rates.get('USD', 0):.4f}")
-                c2.metric("EUR/TRY", f"{live_rates.get('EUR', 0):.4f}")
+        if not portal_tabs_map:
+            st.error("You have access to the Portal module but no specific tabs.")
+        else:
+            tabs = st.tabs(portal_tabs_map)
             
-            if not df_prices.empty:
-                max_db_date = df_prices['date'].max()
-                start_window = max_db_date - timedelta(days=365)
-                colors = {"Tombul": "firebrick", "Cakildak": "royalblue", "Levant": "green"}
-                st.markdown("---")
-                def build_chart(title, mode_type, y_label):
-                    fig = go.Figure()
-                    for h_type in ["Tombul", "Cakildak", "Levant"]:
-                        col_name = f"price_{h_type.lower()}"
-                        if col_name in df_prices.columns:
-                            if mode_type == 'TL': y_vals = df_prices[col_name]
-                            elif mode_type == 'USD': y_vals = df_prices[col_name] / df_prices['rate_usd_try']
-                            elif mode_type == 'EUR': y_vals = df_prices[col_name] / df_prices['rate_eur_try']
-                            fig.add_trace(go.Scatter(x=df_prices['date'], y=y_vals, name=h_type, line=dict(color=colors[h_type], width=3), mode='lines', fill=None))
-                    fig.update_layout(title=dict(text=title), xaxis=dict(title="Date", rangeslider=dict(visible=True), type="date", range=[start_window, max_db_date]), yaxis=dict(title=dict(text=y_label, font=dict(color="black"))), hovermode="x unified", height=500)
-                    return fig
-                st.plotly_chart(build_chart("1. Inshell Prices (TL/kg)", 'TL', "Price (TL)"), use_container_width=True)
-                st.plotly_chart(build_chart("2. Inshell Prices (USD/kg)", 'USD', "Price (USD)"), use_container_width=True)
-                st.plotly_chart(build_chart("3. Inshell Prices (EUR/kg)", 'EUR', "Price (EUR)"), use_container_width=True)
-            else: st.info("No market price data available yet.")
+            # TAB 1: INSHELL
+            if "Inshell Hazelnuts and Market Updates" in portal_tabs_map:
+                with tabs[portal_tabs_map.index("Inshell Hazelnuts and Market Updates")]:
+                    st.header("🌰 Market Updates & Inshell Prices")
+                    df_prices = get_market_prices()
+                    live_rates = get_live_rates()
+                    with st.expander("Live Currency Rates (Auto-fetched)", expanded=True):
+                        c1, c2 = st.columns(2)
+                        c1.metric("USD/TRY", f"{live_rates.get('USD', 0):.4f}")
+                        c2.metric("EUR/TRY", f"{live_rates.get('EUR', 0):.4f}")
+                    
+                    if not df_prices.empty:
+                        max_db_date = df_prices['date'].max()
+                        start_window = max_db_date - timedelta(days=365)
+                        colors = {"Tombul": "firebrick", "Cakildak": "royalblue", "Levant": "green"}
+                        st.markdown("---")
+                        def build_chart(title, mode_type, y_label):
+                            fig = go.Figure()
+                            for h_type in ["Tombul", "Cakildak", "Levant"]:
+                                col_name = f"price_{h_type.lower()}"
+                                if col_name in df_prices.columns:
+                                    if mode_type == 'TL': y_vals = df_prices[col_name]
+                                    elif mode_type == 'USD': y_vals = df_prices[col_name] / df_prices['rate_usd_try']
+                                    elif mode_type == 'EUR': y_vals = df_prices[col_name] / df_prices['rate_eur_try']
+                                    fig.add_trace(go.Scatter(x=df_prices['date'], y=y_vals, name=h_type, line=dict(color=colors[h_type], width=3), mode='lines', fill=None))
+                            fig.update_layout(title=dict(text=title), xaxis=dict(title="Date", rangeslider=dict(visible=True), type="date", range=[start_window, max_db_date]), yaxis=dict(title=dict(text=y_label, font=dict(color="black"))), hovermode="x unified", height=500)
+                            return fig
+                        st.plotly_chart(build_chart("1. Inshell Prices (TL/kg)", 'TL', "Price (TL)"), use_container_width=True)
+                        st.plotly_chart(build_chart("2. Inshell Prices (USD/kg)", 'USD', "Price (USD)"), use_container_width=True)
+                        st.plotly_chart(build_chart("3. Inshell Prices (EUR/kg)", 'EUR', "Price (EUR)"), use_container_width=True)
+                    else: st.info("No market price data available yet.")
 
-        # TAB 2: EXPORT
-        with tabs[1]:
-            st.header("🚢 Weekly Export Figures from Turkey")
-            df_export = get_export_figures()
-            if not df_export.empty:
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(x=df_export['week_ending_date'], y=df_export['total_metric_tons'], name="Metric Tons", yaxis="y1", line=dict(color='blue', width=3)))
-                fig.add_trace(go.Scatter(x=df_export['week_ending_date'], y=df_export['total_export_value_usd'], name="Total Value ($)", yaxis="y2", line=dict(color='green', width=3)))
-                fig.add_trace(go.Scatter(x=df_export['week_ending_date'], y=df_export['avg_kg_price'], name="Avg KG Price ($)", yaxis="y3", line=dict(color='red', width=3, dash='dot')))
-                fig.update_layout(
-                    title=dict(text="Weekly Export Correlations"), 
-                    xaxis=dict(domain=[0.05, 0.9], rangeslider=dict(visible=True), type="date"),
-                    yaxis=dict(title=dict(text="Metric Tons", font=dict(color="blue")), tickfont=dict(color="blue"), dtick=500), 
-                    yaxis2=dict(title=dict(text="Total Value ($)", font=dict(color="green")), tickfont=dict(color="green"), anchor="x", overlaying="y", side="right", dtick=5000000), 
-                    yaxis3=dict(title=dict(text="Avg Price ($/kg)", font=dict(color="red")), tickfont=dict(color="red"), anchor="free", overlaying="y", side="right", position=0.95, range=[5, 20]), 
-                    # --- LEGEND MOVED TO BOTTOM ---
-                    legend=dict(
-                        orientation="h",
-                        yanchor="top",
-                        y=-0.3, # Moves legend below X-axis
-                        xanchor="center",
-                        x=0.5
-                    ),
-                    height=600
-                )
-                st.plotly_chart(fig, use_container_width=True)
-            else: st.info("No export data available.")
+            # TAB 2: EXPORT
+            if "Weekly Export Figures" in portal_tabs_map:
+                with tabs[portal_tabs_map.index("Weekly Export Figures")]:
+                    st.header("🚢 Weekly Export Figures from Turkey")
+                    df_export = get_export_figures()
+                    if not df_export.empty:
+                        fig = go.Figure()
+                        fig.add_trace(go.Scatter(x=df_export['week_ending_date'], y=df_export['total_metric_tons'], name="Metric Tons", yaxis="y1", line=dict(color='blue', width=3)))
+                        fig.add_trace(go.Scatter(x=df_export['week_ending_date'], y=df_export['total_export_value_usd'], name="Total Value ($)", yaxis="y2", line=dict(color='green', width=3)))
+                        fig.add_trace(go.Scatter(x=df_export['week_ending_date'], y=df_export['avg_kg_price'], name="Avg KG Price ($)", yaxis="y3", line=dict(color='red', width=3, dash='dot')))
+                        fig.update_layout(
+                            title=dict(text="Weekly Export Correlations"), 
+                            xaxis=dict(domain=[0.05, 0.9], rangeslider=dict(visible=True), type="date"),
+                            yaxis=dict(title=dict(text="Metric Tons", font=dict(color="blue")), tickfont=dict(color="blue"), dtick=500), 
+                            yaxis2=dict(title=dict(text="Total Value ($)", font=dict(color="green")), tickfont=dict(color="green"), anchor="x", overlaying="y", side="right", dtick=5000000), 
+                            yaxis3=dict(title=dict(text="Avg Price ($/kg)", font=dict(color="red")), tickfont=dict(color="red"), anchor="free", overlaying="y", side="right", position=0.95, range=[5, 20]), 
+                            legend=dict(orientation="h", yanchor="top", y=-0.3, xanchor="center", x=0.5),
+                            height=600
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                    else: st.info("No export data available.")
 
-        # ADMIN TABS
-        if role == 'administrator' and len(tabs) > 2:
-            with tabs[2]:
-                st.header("📝 Input Export Figures")
-                with st.form("export_input"):
-                    c1, c2, c3 = st.columns(3)
-                    date_in = c1.date_input("Week Ending Date", value=datetime.now())
-                    tons_in = c2.number_input("Total Metric Tons", min_value=0.0, step=100.0)
-                    val_in = c3.number_input("Total Export Value (USD)", min_value=0.0, step=100000.0)
-                    if st.form_submit_button("Save Weekly Figure"):
-                        if tons_in > 0 and val_in > 0:
-                            try:
-                                supabase.table("export_figures").upsert({"week_ending_date": str(date_in), "total_metric_tons": tons_in, "total_export_value_usd": val_in, "created_by": st.session_state.user['email']}, on_conflict="week_ending_date").execute()
-                                st.success("Saved!"); time.sleep(1); st.rerun()
-                            except Exception as e: st.error(f"Error: {e}")
-                        else: st.warning("Please enter valid Tons and Value.")
-                
-                # Interactive Delete Table
-                df_ex = get_export_figures()
-                render_delete_table(df_ex, "export_figures", "week_ending_date", "page_export")
+            # ADMIN TABS
+            if "Admin: Input Export Figures" in portal_tabs_map:
+                with tabs[portal_tabs_map.index("Admin: Input Export Figures")]:
+                    st.header("📝 Input Export Figures")
+                    with st.form("export_input"):
+                        c1, c2, c3 = st.columns(3)
+                        date_in = c1.date_input("Week Ending Date", value=datetime.now())
+                        tons_in = c2.number_input("Total Metric Tons", min_value=0.0, step=100.0)
+                        val_in = c3.number_input("Total Export Value (USD)", min_value=0.0, step=100000.0)
+                        if st.form_submit_button("Save Weekly Figure"):
+                            if tons_in > 0 and val_in > 0:
+                                try:
+                                    supabase.table("export_figures").upsert({"week_ending_date": str(date_in), "total_metric_tons": tons_in, "total_export_value_usd": val_in, "created_by": st.session_state.user['email']}, on_conflict="week_ending_date").execute()
+                                    st.success("Saved!"); time.sleep(1); st.rerun()
+                                except Exception as e: st.error(f"Error: {e}")
+                            else: st.warning("Please enter valid Tons and Value.")
+                    
+                    df_ex = get_export_figures()
+                    render_delete_table(df_ex, "export_figures", "week_ending_date", "page_export")
             
-            with tabs[3]:
-                st.header("📝 Input Daily Market Prices")
-                
-                # --- STATE MANAGEMENT FOR FETCH ---
-                if 'rate_usd_val' not in st.session_state: st.session_state.rate_usd_val = 34.50
-                if 'rate_eur_val' not in st.session_state: st.session_state.rate_eur_val = 37.20
-                if 'in_usd' not in st.session_state: st.session_state.in_usd = 34.50
-                if 'in_eur' not in st.session_state: st.session_state.in_eur = 37.20
-                
-                # Container for inputs to refresh nicely
-                with st.container():
-                    c_date, c_time, c_btn = st.columns([2, 2, 2])
-                    # Changed default value to Yesterday
-                    d_date = c_date.date_input("Date", value=datetime.now() - timedelta(days=1))
-                    t_time = c_time.time_input("Time (HH:MM)", value=datetime.now().time())
+            if "Admin: Input Inshell Market Price" in portal_tabs_map:
+                with tabs[portal_tabs_map.index("Admin: Input Inshell Market Price")]:
+                    st.header("📝 Input Daily Market Prices")
                     
-                    c_btn.write("") # Spacer so button aligns with inputs
-                    if c_btn.button("Fetch exchange rates"):
-                        with st.spinner("Fetching historical rates..."):
-                            fetched = get_historical_rates(d_date, t_time)
-                            if fetched:
-                                st.session_state.in_usd = fetched["USD"]
-                                st.session_state.in_eur = fetched["EUR"]
-                                st.session_state.rate_usd_val = fetched["USD"]
-                                st.session_state.rate_eur_val = fetched["EUR"]
-                                st.success(f"Fetched: USD {fetched['USD']:.4f}, EUR {fetched['EUR']:.4f}")
-                            else:
-                                st.warning("Could not fetch historical data. Using defaults/live.")
-                
-                with st.form("price_input_form"):
-                    st.caption("Enter prices for ALL 3 types (TL/kg)."); c1, c2, c3 = st.columns(3); p_tombul = c1.number_input("Tombul", min_value=0.0, step=0.5); p_cakildak = c2.number_input("Cakildak", min_value=0.0, step=0.5); p_levant = c3.number_input("Levant", min_value=0.0, step=0.5)
-                    st.markdown("---"); st.write("**Exchange Rates**"); c4, c5 = st.columns(2)
+                    if 'rate_usd_val' not in st.session_state: st.session_state.rate_usd_val = 34.50
+                    if 'rate_eur_val' not in st.session_state: st.session_state.rate_eur_val = 37.20
+                    if 'in_usd' not in st.session_state: st.session_state.in_usd = 34.50
+                    if 'in_eur' not in st.session_state: st.session_state.in_eur = 37.20
                     
-                    # Use Session State for values AND keys for immediate update
-                    r_usd = c4.number_input("USD/TRY Rate", min_value=0.0, step=0.01, format="%.4f", key="in_usd")
-                    r_eur = c5.number_input("EUR/TRY Rate", min_value=0.0, step=0.01, format="%.4f", key="in_eur")
+                    with st.container():
+                        c_date, c_time, c_btn = st.columns([2, 2, 2])
+                        d_date = c_date.date_input("Date", value=datetime.now() - timedelta(days=1))
+                        t_time = c_time.time_input("Time (HH:MM)", value=datetime.now().time())
+                        c_btn.write("")
+                        if c_btn.button("Fetch exchange rates"):
+                            with st.spinner("Fetching historical rates..."):
+                                fetched = get_historical_rates(d_date, t_time)
+                                if fetched:
+                                    st.session_state.in_usd = fetched["USD"]
+                                    st.session_state.in_eur = fetched["EUR"]
+                                    st.session_state.rate_usd_val = fetched["USD"]
+                                    st.session_state.rate_eur_val = fetched["EUR"]
+                                    st.success(f"Fetched: USD {fetched['USD']:.4f}, EUR {fetched['EUR']:.4f}")
+                                else: st.warning("Could not fetch historical data. Using defaults/live.")
                     
-                    if st.form_submit_button("Save Entry"):
-                        if p_tombul > 0:
-                            payload = {"date": str(d_date), "price_tombul": p_tombul, "price_cakildak": p_cakildak, "price_levant": p_levant, "rate_usd_try": r_usd, "rate_eur_try": r_eur, "created_by": st.session_state.user['email']}
-                            try: supabase.table("market_prices").upsert(payload, on_conflict="date").execute(); st.success("Saved!"); time.sleep(1); st.rerun()
-                            except Exception as e: st.error(f"Error: {e}")
-                
-                # Interactive Delete Table
-                df_hist = get_market_prices()
-                render_delete_table(df_hist, "market_prices", "date", "page_market")
+                    with st.form("price_input_form"):
+                        st.caption("Enter prices for ALL 3 types (TL/kg)."); c1, c2, c3 = st.columns(3); p_tombul = c1.number_input("Tombul", min_value=0.0, step=0.5); p_cakildak = c2.number_input("Cakildak", min_value=0.0, step=0.5); p_levant = c3.number_input("Levant", min_value=0.0, step=0.5)
+                        st.markdown("---"); st.write("**Exchange Rates**"); c4, c5 = st.columns(2)
+                        r_usd = c4.number_input("USD/TRY Rate", min_value=0.0, step=0.01, format="%.4f", key="in_usd")
+                        r_eur = c5.number_input("EUR/TRY Rate", min_value=0.0, step=0.01, format="%.4f", key="in_eur")
+                        if st.form_submit_button("Save Entry"):
+                            if p_tombul > 0:
+                                payload = {"date": str(d_date), "price_tombul": p_tombul, "price_cakildak": p_cakildak, "price_levant": p_levant, "rate_usd_try": r_usd, "rate_eur_try": r_eur, "created_by": st.session_state.user['email']}
+                                try: supabase.table("market_prices").upsert(payload, on_conflict="date").execute(); st.success("Saved!"); time.sleep(1); st.rerun()
+                                except Exception as e: st.error(f"Error: {e}")
+                    
+                    df_hist = get_market_prices()
+                    render_delete_table(df_hist, "market_prices", "date", "page_market")
 
     # ==========================
     # MODULE 1: COMBINED
@@ -684,7 +625,7 @@ else:
                         with st.form("new_user"):
                             email = st.text_input("Email")
                             pwd = st.text_input("Password", type="password")
-                            role_sel = st.selectbox("Role", ["employee", "administrator"])
+                            role_sel = st.selectbox("Role", ["customer", "employee", "administrator"])
                             st.write("Permissions:")
                             c1, c2 = st.columns(2)
                             new_mods = []
@@ -696,6 +637,7 @@ else:
                                 if st.checkbox("  └ Tab: Factory", key="c_m1_12"): new_mods.append(12)
                                 if st.checkbox("3. Production", key="c_m3"): new_mods.append(3)
                                 if st.checkbox("5. Stock", key="c_m5"): new_mods.append(5)
+                                if st.checkbox("6. Offers", key="c_m6"): new_mods.append(6)
 
                             with c2:
                                 st.markdown("**4. Admin**")
@@ -703,12 +645,19 @@ else:
                                 if st.checkbox("  └ Tab: Users", key="c_m4_41"): new_mods.append(41)
                                 if st.checkbox("  └ Tab: Materials", key="c_m4_42"): new_mods.append(42)
                                 if st.checkbox("  └ Tab: Logs", key="c_m4_43"): new_mods.append(43)
-                                if st.checkbox("6. Offers", key="c_m6"): new_mods.append(6)
+                                
                                 st.markdown("**7. Quality**")
                                 if st.checkbox("Mod 7 Access", key="c_m7"): new_mods.append(7)
                                 if st.checkbox("  └ Tab: Create", key="c_m7_71"): new_mods.append(71)
                                 if st.checkbox("  └ Tab: List", key="c_m7_72"): new_mods.append(72)
-                            
+                                
+                                st.markdown("**9. Customer Portal**")
+                                if st.checkbox("Mod 9 Access", key="c_m9"): new_mods.append(9)
+                                if st.checkbox("  └ Market", key="c_m9_91"): new_mods.append(91)
+                                if st.checkbox("  └ Export", key="c_m9_92"): new_mods.append(92)
+                                if st.checkbox("  └ Admin: Export", key="c_m9_93"): new_mods.append(93)
+                                if st.checkbox("  └ Admin: Prices", key="c_m9_94"): new_mods.append(94)
+
                             if st.form_submit_button("Create"):
                                 success, msg = register_user(email, pwd, role=role_sel)
                                 if success:
@@ -728,7 +677,7 @@ else:
                             target = user_list[sel_u]
                             with st.form("edit_u"):
                                 st.write(f"Editing: {target['email']}")
-                                new_r = st.selectbox("Role", ["employee", "administrator"], index=["employee", "administrator"].index(target['role']) if target['role'] in ["employee", "administrator"] else 0)
+                                new_r = st.selectbox("Role", ["customer", "employee", "administrator"], index=["customer", "employee", "administrator"].index(target['role']) if target['role'] in ["customer", "employee", "administrator"] else 0)
                                 new_app = st.checkbox("Approved", target['is_approved'])
                                 cur = target.get('allowed_modules', []) or []
                                 u_mods = []
@@ -741,6 +690,7 @@ else:
                                     if st.checkbox("  └ Factory", key="e_m1_12", value=(12 in cur)): u_mods.append(12)
                                     if st.checkbox("3. Production", key="e_m3", value=(3 in cur)): u_mods.append(3)
                                     if st.checkbox("5. Stock", key="e_m5", value=(5 in cur)): u_mods.append(5)
+                                    if st.checkbox("6. Offers", key="e_m6", value=(6 in cur)): u_mods.append(6)
                                 
                                 with ec2:
                                     st.markdown("**4. Admin**")
@@ -748,11 +698,18 @@ else:
                                     if st.checkbox("  └ Users", key="e_m4_41", value=(41 in cur)): u_mods.append(41)
                                     if st.checkbox("  └ Materials", key="e_m4_42", value=(42 in cur)): u_mods.append(42)
                                     if st.checkbox("  └ Logs", key="e_m4_43", value=(43 in cur)): u_mods.append(43)
-                                    if st.checkbox("6. Offers", key="e_m6", value=(6 in cur)): u_mods.append(6)
+                                    
                                     st.markdown("**7. Quality**")
                                     if st.checkbox("Mod 7 Access", key="e_m7", value=(7 in cur)): u_mods.append(7)
                                     if st.checkbox("  └ Create", key="e_m7_71", value=(71 in cur)): u_mods.append(71)
                                     if st.checkbox("  └ List", key="e_m7_72", value=(72 in cur)): u_mods.append(72)
+
+                                    st.markdown("**9. Customer Portal**")
+                                    if st.checkbox("Mod 9 Access", key="e_m9", value=(9 in cur)): u_mods.append(9)
+                                    if st.checkbox("  └ Market", key="e_m9_91", value=(91 in cur)): u_mods.append(91)
+                                    if st.checkbox("  └ Export", key="e_m9_92", value=(92 in cur)): u_mods.append(92)
+                                    if st.checkbox("  └ Admin: Export", key="e_m9_93", value=(93 in cur)): u_mods.append(93)
+                                    if st.checkbox("  └ Admin: Prices", key="e_m9_94", value=(94 in cur)): u_mods.append(94)
                                 
                                 if st.form_submit_button("Update"):
                                     update_user_permissions(target['id'], new_app, u_mods, new_r)
