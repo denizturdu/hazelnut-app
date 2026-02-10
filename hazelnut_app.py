@@ -26,6 +26,8 @@ if 'active_quality_row' not in st.session_state: st.session_state.active_quality
 if 'generated_excel_data' not in st.session_state: st.session_state.generated_excel_data = None
 if 'temp_custom_params' not in st.session_state: st.session_state.temp_custom_params = {}
 if 'delete_confirm_id' not in st.session_state: st.session_state.delete_confirm_id = None
+if 'edit_domestic_id' not in st.session_state: st.session_state.edit_domestic_id = None
+
 # Pagination States
 if 'page_export' not in st.session_state: st.session_state.page_export = 0
 if 'page_market' not in st.session_state: st.session_state.page_market = 0
@@ -51,9 +53,9 @@ TAB_PERMISSIONS = {
     9: {
         91: "Inshell Market (Read)", 
         92: "Export Figures (Read)", 
+        95: "Domestic Kernel (Read)",
         93: "Admin: Export Input", 
         94: "Admin: Inshell Input",
-        95: "Domestic Kernel (Read)",
         96: "Admin: Domestic Input"
     }
 }
@@ -95,6 +97,15 @@ def get_domestic_prices():
         return df
     except: return pd.DataFrame()
 
+def get_last_domestic_entry():
+    """Fetches the single most recent domestic price entry."""
+    try:
+        response = supabase.table("domestic_kernel_prices").select("*").order("date", desc=True).limit(1).execute()
+        if response.data:
+            return response.data[0]
+    except: pass
+    return None
+
 def get_export_figures():
     try:
         response = supabase.table("export_figures").select("*").order("week_ending_date", desc=False).execute()
@@ -121,66 +132,24 @@ def get_live_rates():
     return rates
 
 def get_historical_rates(date_obj, time_obj=None):
-    """
-    Fetches historical exchange rates using yfinance.
-    Tries to be smart: if recent, uses hourly data. If old, uses daily close.
-    """
-    if yf is None:
-        st.error("yfinance library not found. Please add 'yfinance' to requirements.txt")
-        return None
-
+    if yf is None: st.error("yfinance library not found."); return None
     try:
-        tickers = ["TRY=X", "EURTRY=X"]
-        
-        # Widen window to catch weekends/holidays (look back 5 days from target)
-        # End date is exclusive, so +1
-        end_date = date_obj + timedelta(days=1)
-        start_date = date_obj - timedelta(days=5)
-        
-        # Try intraday first (1h)
+        tickers = ["TRY=X", "EURTRY=X"]; end_date = date_obj + timedelta(days=1); start_date = date_obj - timedelta(days=5)
         interval = "1h"
         data = yf.download(tickers, start=start_date, end=end_date, interval=interval, progress=False)
-        
-        if data.empty:
-             # Fallback to daily
-             interval = "1d"
-             data = yf.download(tickers, start=start_date, end=end_date, interval=interval, progress=False)
-        
-        if data.empty:
-            return None
-            
-        # Extract Close data
-        try:
-            close_data = data['Close']
-        except KeyError:
-            return None
-            
-        # Filter to only include data BEFORE or AT the user's specific datetime
-        # We need to find the latest available price point relative to user input
-        
+        if data.empty: interval = "1d"; data = yf.download(tickers, start=start_date, end=end_date, interval=interval, progress=False)
+        if data.empty: return None
+        try: close_data = data['Close']
+        except KeyError: return None
         target_dt = datetime.combine(date_obj, time_obj) if time_obj else datetime.combine(date_obj, datetime.max.time())
-        
-        # Normalize index to timezone-naive to compare with target_dt
         close_data.index = close_data.index.tz_localize(None)
-        
-        # Filter rows <= target_dt
         mask = close_data.index <= target_dt
         filtered = close_data[mask]
-        
-        if not filtered.empty:
-            last_row = filtered.iloc[-1]
-        else:
-            # If no data before target (rare with 5 day window), take the very first available in window
-            last_row = close_data.iloc[0]
-
-        final_usd = last_row.get('TRY=X')
-        final_eur = last_row.get('EURTRY=X')
-            
+        if not filtered.empty: last_row = filtered.iloc[-1]
+        else: last_row = close_data.iloc[0]
+        final_usd = last_row.get('TRY=X'); final_eur = last_row.get('EURTRY=X')
         return {"USD": float(final_usd) if final_usd else 0.0, "EUR": float(final_eur) if final_eur else 0.0}
-
-    except Exception as e:
-        print(f"Rate fetch error: {e}")
-        return None
+    except Exception as e: print(f"Rate fetch error: {e}"); return None
 
 def log_login(email):
     try: supabase.table("login_logs").insert({"email": email}).execute()
@@ -196,33 +165,27 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
     workbook = writer.book
     worksheet = workbook.add_worksheet('Offer Sheet')
     worksheet.set_tab_color('#107C41')
-
     header_format = workbook.add_format({'bold': True, 'font_size': 14, 'color': '#203764'})
     label_format = workbook.add_format({'bold': True, 'align': 'right', 'bg_color': '#f2f2f2', 'border': 1})
     input_format = workbook.add_format({'border': 1, 'bg_color': '#ffffff'})
     table_header_format = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'bg_color': '#4472C4', 'font_color': 'white', 'border': 1, 'text_wrap': True})
     linked_cell_format = workbook.add_format({'bg_color': '#E7E6E6', 'border': 1, 'italic': True, 'font_color': '#595959'})
     quality_header_format = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'bg_color': '#FFC000', 'font_color': 'black', 'border': 1, 'text_wrap': True})
-
     worksheet.write('A1', 'AVELLA OFFER SHEET', header_format)
     headers = [("Date:", "B3", header_data.get("date", "")), ("Offer No:", "D3", header_data.get("offer_no", "")), ("Validity:", "F3", header_data.get("validity", "")), ("Customer Name:", "B4", header_data.get("customer", "")), ("Cust. Ref:", "D4", header_data.get("cust_ref", "")), ("Avella Ref:", "F4", header_data.get("avella_ref", "")), ("Payment Terms:", "B5", header_data.get("payment", "")), ("Delivery Addr:", "D5", header_data.get("delivery", ""))]
     for label, cell, val in headers:
         worksheet.write(cell, label, label_format); col_letter = cell[0]; row_num = int(cell[1:]); input_cell = chr(ord(col_letter) + 1) + str(row_num); worksheet.write(input_cell, str(val), input_format)
     worksheet.merge_range('E5:G5', "", input_format)
-
     table_start_row = 8
     columns = ["Category", "Product Group", "Total Contract Volume (kg)", "Type/Process", "Variety", "Size", "Packaging", "Net Wgt (kg)", "Price", "Currency", "Incoterms", "Place of Delivery", "Minimum Order Quantity (kg)", "Shipment Schedule", "Payment Terms"]
     for i, col_name in enumerate(columns): worksheet.write(table_start_row, i, col_name, table_header_format); worksheet.set_column(i, i, 15)
-    
     worksheet.set_column('B:B', 20); worksheet.set_column('C:C', 20); worksheet.set_column('D:D', 25); worksheet.set_column('E:E', 20); worksheet.set_column('G:G', 25); worksheet.set_column('L:L', 20); worksheet.set_column('M:M', 25); worksheet.set_column('N:N', 20); worksheet.set_column('O:O', 20)
-
     if product_df is not None and not product_df.empty:
         for idx, row in product_df.iterrows():
             row_num = table_start_row + 1 + idx
             for col_idx, col_name in enumerate(columns):
                 val = row.get(col_name, "")
                 worksheet.write(row_num, col_idx, val, input_format)
-
     worksheet_qual = workbook.add_worksheet('Quality Parameters'); worksheet_qual.set_tab_color('#FFC000')
     qual_ident_cols = ["Product Group (Linked)", "Type (Linked)", "Variety (Linked)", "Size (Linked)"]
     used_params = set(DEFAULT_QUALITY_PARAMS.keys())
@@ -231,31 +194,22 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
         param_row_limit = max(100, len(product_df) + 5)
         if quality_override:
             for ridx, params in quality_override.items(): used_params.update(params.keys())
-    
     sorted_params = sorted(list(used_params))
     all_qual_cols = qual_ident_cols + sorted_params
-
     for i, col_name in enumerate(all_qual_cols): worksheet_qual.write(table_start_row, i, col_name, quality_header_format); worksheet_qual.set_column(i, i, 22) 
-
     for r_idx in range(param_row_limit):
         xl_row = table_start_row + 1 + r_idx + 1
         worksheet_row = table_start_row + 1 + r_idx
-        worksheet_qual.write_formula(worksheet_row, 0, f"='Offer Sheet'!B{xl_row}", linked_cell_format) 
-        worksheet_qual.write_formula(worksheet_row, 1, f"='Offer Sheet'!D{xl_row}", linked_cell_format) 
-        worksheet_qual.write_formula(worksheet_row, 2, f"='Offer Sheet'!E{xl_row}", linked_cell_format) 
-        worksheet_qual.write_formula(worksheet_row, 3, f"='Offer Sheet'!F{xl_row}", linked_cell_format) 
+        worksheet_qual.write_formula(worksheet_row, 0, f"='Offer Sheet'!B{xl_row}", linked_cell_format); worksheet_qual.write_formula(worksheet_row, 1, f"='Offer Sheet'!D{xl_row}", linked_cell_format); worksheet_qual.write_formula(worksheet_row, 2, f"='Offer Sheet'!E{xl_row}", linked_cell_format); worksheet_qual.write_formula(worksheet_row, 3, f"='Offer Sheet'!F{xl_row}", linked_cell_format) 
         row_custom_data = {}
         if quality_override and r_idx in quality_override: row_custom_data = quality_override[r_idx]
         for i, key in enumerate(sorted_params):
             val = row_custom_data.get(key, DEFAULT_QUALITY_PARAMS.get(key, ""))
             worksheet_qual.write(worksheet_row, 4 + i, val, input_format)
-
     ref_sheet = workbook.add_worksheet('ReferenceData'); ref_sheet.hide()
     def write_list_to_ref(header, data_list, col_idx):
         ref_sheet.write(0, col_idx, header); [ref_sheet.write(i + 1, col_idx, item) for i, item in enumerate(data_list)]; return f"=ReferenceData!${xlsxwriter.utility.xl_col_to_name(col_idx)}$2:${xlsxwriter.utility.xl_col_to_name(col_idx)}${len(data_list) + 1}"
-    
     cat_range = write_list_to_ref("Categories", OFFER_CONSTANTS["Categories"], 0); group_range = write_list_to_ref("Groups", OFFER_CONSTANTS["Product_Groups"], 1); type_range = write_list_to_ref("Types", OFFER_CONSTANTS["Product_Types"], 2); var_range = write_list_to_ref("Varieties", OFFER_CONSTANTS["Varieties"], 3); size_range = write_list_to_ref("Sizes", OFFER_CONSTANTS["Sizes"], 4); pack_range = write_list_to_ref("Packaging", OFFER_CONSTANTS["Packaging"], 5); curr_range = write_list_to_ref("Currencies", OFFER_CONSTANTS["Currencies"], 6); inco_range = write_list_to_ref("Incoterms", OFFER_CONSTANTS["Incoterms"], 7)
-    
     val_end = table_start_row + 1 + 100
     worksheet.data_validation(table_start_row + 1, 0, val_end, 0, {'validate': 'list', 'source': cat_range})
     worksheet.data_validation(table_start_row + 1, 1, val_end, 1, {'validate': 'list', 'source': group_range})
@@ -265,103 +219,82 @@ def generate_offer_excel(header_data=None, product_df=None, quality_override=Non
     worksheet.data_validation(table_start_row + 1, 6, val_end, 6, {'validate': 'list', 'source': pack_range})
     worksheet.data_validation(table_start_row + 1, 9, val_end, 9, {'validate': 'list', 'source': curr_range})
     worksheet.data_validation(table_start_row + 1, 10, val_end, 10, {'validate': 'list', 'source': inco_range})
-
     writer.close(); output.seek(0); return output
 
 def render_delete_table(df, table_name, date_col, page_state_key):
-    """
-    Renders a table with delete functionality and pagination.
-    """
-    if df.empty:
-        st.info("No data to show.")
-        return
-
-    # Sort descending
+    if df.empty: st.info("No data to show."); return
     df = df.sort_values(by=date_col, ascending=False).reset_index(drop=True)
-    
-    # Pagination Logic
-    ROWS_PER_PAGE = 50
-    total_rows = len(df)
-    total_pages = max(1, (total_rows - 1) // ROWS_PER_PAGE + 1)
-    
-    # Validate Page Number
+    ROWS_PER_PAGE = 50; total_rows = len(df); total_pages = max(1, (total_rows - 1) // ROWS_PER_PAGE + 1)
     if st.session_state[page_state_key] >= total_pages: st.session_state[page_state_key] = total_pages - 1
     if st.session_state[page_state_key] < 0: st.session_state[page_state_key] = 0
-    current_page = st.session_state[page_state_key]
-    
-    start_idx = current_page * ROWS_PER_PAGE
-    end_idx = start_idx + ROWS_PER_PAGE
-    df_page = df.iloc[start_idx:end_idx]
-    
-    # Header
+    current_page = st.session_state[page_state_key]; start_idx = current_page * ROWS_PER_PAGE; end_idx = start_idx + ROWS_PER_PAGE; df_page = df.iloc[start_idx:end_idx]
     st.markdown("#### 📜 Recent Entries")
-    
-    # --- TABLE CONFIGURATION ---
     if table_name == "export_figures":
-        cols_cfg = [2, 2, 2, 2, 2, 1] 
-        headers = ["Week End", "Tons", "Value ($)", "Avg Price", "Change", "Action"]
+        cols_cfg = [2, 2, 2, 2, 2, 1]; headers = ["Week End", "Tons", "Value ($)", "Avg Price", "Change", "Action"]
     elif table_name == "market_prices": 
-        cols_cfg = [2, 1, 1, 1, 1, 1, 1]
-        headers = ["Date", "Tombul", "Cakildak", "Levant", "USD", "EUR", "Action"]
+        cols_cfg = [2, 1, 1, 1, 1, 1, 1]; headers = ["Date", "Tombul", "Cakildak", "Levant", "USD", "EUR", "Action"]
     elif table_name == "domestic_kernel_prices":
-        # Date, Time, L11, L12, L13, G11, G12, G13, Bur, Cik, Cur, USD, EUR, Action
-        # 14 columns. Need tight spacing.
-        cols_cfg = [1.5, 1, 1,1,1, 1,1,1, 1,1,1, 1,1, 1]
-        headers = ["Date", "Time", "L11", "L12", "L13", "G11", "G12", "G13", "Bur", "Cik", "Cur", "USD", "EUR", "Act"]
-    else:
-        st.error("Unknown table config")
-        return
-
+        cols_cfg = [1.5, 1, 1,1,1, 1,1,1, 1,1,1, 1,1, 1.5]; headers = ["Date", "Time", "L11", "L12", "L13", "G11", "G12", "G13", "Bur", "Cik", "Cur", "USD", "EUR", "Action"]
+    else: st.error("Unknown table config"); return
     h_cols = st.columns(cols_cfg)
     for i, h in enumerate(headers): h_cols[i].markdown(f"**{h}**")
     st.markdown("---")
-
     for idx, row in df_page.iterrows():
         r_cols = st.columns(cols_cfg)
-        
         if table_name == "export_figures":
-            r_cols[0].write(row['week_ending_date'].strftime('%Y-%m-%d'))
-            r_cols[1].write(f"{row['total_metric_tons']:,.0f}")
-            r_cols[2].write(f"${row['total_export_value_usd']:,.0f}")
-            r_cols[3].write(f"${row.get('avg_kg_price', 0):.2f}")
-            r_cols[4].write(f"{row.get('price_change', 0):+.2f}")
+            r_cols[0].write(row['week_ending_date'].strftime('%Y-%m-%d')); r_cols[1].write(f"{row['total_metric_tons']:,.0f}"); r_cols[2].write(f"${row['total_export_value_usd']:,.0f}"); r_cols[3].write(f"${row.get('avg_kg_price', 0):.2f}"); r_cols[4].write(f"{row.get('price_change', 0):+.2f}")
         elif table_name == "market_prices":
-            r_cols[0].write(row['date'].strftime('%Y-%m-%d'))
-            r_cols[1].write(f"{row['price_tombul']:.2f}")
-            r_cols[2].write(f"{row['price_cakildak']:.2f}")
-            r_cols[3].write(f"{row['price_levant']:.2f}")
-            r_cols[4].write(f"{row['rate_usd_try']:.4f}")
-            r_cols[5].write(f"{row['rate_eur_try']:.4f}")
+            r_cols[0].write(row['date'].strftime('%Y-%m-%d')); r_cols[1].write(f"{row['price_tombul']:.2f}"); r_cols[2].write(f"{row['price_cakildak']:.2f}"); r_cols[3].write(f"{row['price_levant']:.2f}"); r_cols[4].write(f"{row['rate_usd_try']:.4f}"); r_cols[5].write(f"{row['rate_eur_try']:.4f}")
         elif table_name == "domestic_kernel_prices":
-             r_cols[0].write(row['date'].strftime('%Y-%m-%d'))
-             r_cols[1].write(str(row['time_of_day'])[:5]) # format HH:MM
-             r_cols[2].write(f"{row.get('price_levant_11_13',0):.0f}")
-             r_cols[3].write(f"{row.get('price_levant_12_13',0):.0f}")
-             r_cols[4].write(f"{row.get('price_levant_13_15',0):.0f}")
-             r_cols[5].write(f"{row.get('price_giresun_11_13',0):.0f}")
-             r_cols[6].write(f"{row.get('price_giresun_12_13',0):.0f}")
-             r_cols[7].write(f"{row.get('price_giresun_13_15',0):.0f}")
-             r_cols[8].write(f"{row.get('price_burusuk',0):.0f}")
-             r_cols[9].write(f"{row.get('price_cikinti',0):.0f}")
-             r_cols[10].write(f"{row.get('price_curuk',0):.0f}")
-             r_cols[11].write(f"{row.get('rate_usd_try',0):.2f}")
-             r_cols[12].write(f"{row.get('rate_eur_try',0):.2f}")
-
+             r_cols[0].write(row['date'].strftime('%Y-%m-%d')); r_cols[1].write(str(row['time_of_day'])[:5])
+             r_cols[2].write(f"{row.get('price_levant_11_13',0):.0f}"); r_cols[3].write(f"{row.get('price_levant_12_13',0):.0f}"); r_cols[4].write(f"{row.get('price_levant_13_15',0):.0f}")
+             r_cols[5].write(f"{row.get('price_giresun_11_13',0):.0f}"); r_cols[6].write(f"{row.get('price_giresun_12_13',0):.0f}"); r_cols[7].write(f"{row.get('price_giresun_13_15',0):.0f}")
+             r_cols[8].write(f"{row.get('price_burusuk',0):.0f}"); r_cols[9].write(f"{row.get('price_cikinti',0):.0f}"); r_cols[10].write(f"{row.get('price_curuk',0):.0f}")
+             r_cols[11].write(f"{row.get('rate_usd_try',0):.2f}"); r_cols[12].write(f"{row.get('rate_eur_try',0):.2f}")
+        
+        # Action Buttons
         target = f"{table_name}_{row['id']}"
-        if st.session_state.delete_confirm_id == target:
-            b_yes, b_no = r_cols[-1].columns(2)
-            if b_yes.button("✅", key=f"yes_{target}"):
-                supabase.table(table_name).delete().eq("id", row['id']).execute()
-                st.session_state.delete_confirm_id = None; time.sleep(0.5); st.rerun()
-            if b_no.button("❌", key=f"no_{target}"):
-                st.session_state.delete_confirm_id = None; st.rerun()
-        else:
-            if r_cols[-1].button("🗑️", key=f"del_{target}"):
-                st.session_state.delete_confirm_id = target; st.rerun()
-    
+        with r_cols[-1]:
+            # Edit Button (Only for domestic now, or expandable later)
+            if table_name == "domestic_kernel_prices":
+                c_edit, c_del = st.columns(2)
+                if c_edit.button("✏️", key=f"edit_{target}", help="Edit Entry"):
+                    # Load data into session state
+                    st.session_state['edit_domestic_id'] = row['id']
+                    st.session_state['dom_date'] = row['date']
+                    try:
+                        st.session_state['dom_time'] = datetime.strptime(str(row['time_of_day']), "%H:%M:%S").time()
+                    except:
+                        st.session_state['dom_time'] = datetime.now().time()
+                    st.session_state['l1'] = row.get('price_levant_11_13', 0.0)
+                    st.session_state['l2'] = row.get('price_levant_12_13', 0.0)
+                    st.session_state['l3'] = row.get('price_levant_13_15', 0.0)
+                    st.session_state['g1'] = row.get('price_giresun_11_13', 0.0)
+                    st.session_state['g2'] = row.get('price_giresun_12_13', 0.0)
+                    st.session_state['g3'] = row.get('price_giresun_13_15', 0.0)
+                    st.session_state['bur'] = row.get('price_burusuk', 0.0)
+                    st.session_state['cik'] = row.get('price_cikinti', 0.0)
+                    st.session_state['cur'] = row.get('price_curuk', 0.0)
+                    st.session_state['dom_usd'] = row.get('rate_usd_try', 0.0)
+                    st.session_state['dom_eur'] = row.get('rate_eur_try', 0.0)
+                    st.rerun()
+                
+                # Delete Button
+                if st.session_state.delete_confirm_id == target:
+                    if c_del.button("✅", key=f"yes_{target}"): supabase.table(table_name).delete().eq("id", row['id']).execute(); st.session_state.delete_confirm_id = None; time.sleep(0.5); st.rerun()
+                    if c_del.button("❌", key=f"no_{target}"): st.session_state.delete_confirm_id = None; st.rerun()
+                else:
+                    if c_del.button("🗑️", key=f"del_{target}"): st.session_state.delete_confirm_id = target; st.rerun()
+            else:
+                # Standard Delete for other tables
+                if st.session_state.delete_confirm_id == target:
+                    c1, c2 = st.columns(2)
+                    if c1.button("✅", key=f"yes_{target}"): supabase.table(table_name).delete().eq("id", row['id']).execute(); st.session_state.delete_confirm_id = None; time.sleep(0.5); st.rerun()
+                    if c2.button("❌", key=f"no_{target}"): st.session_state.delete_confirm_id = None; st.rerun()
+                else:
+                    if st.button("🗑️", key=f"del_{target}"): st.session_state.delete_confirm_id = target; st.rerun()
+
     st.markdown("---")
-    
-    # Navigation Buttons
     c_first, c_prev, c_info, c_next, c_last = st.columns([1, 1, 2, 1, 1])
     if c_first.button("⏮️ First", key=f"f_{table_name}", disabled=(current_page == 0)): st.session_state[page_state_key] = 0; st.rerun()
     if c_prev.button("⬅️ Prev", key=f"p_{table_name}", disabled=(current_page == 0)): st.session_state[page_state_key] -= 1; st.rerun()
@@ -624,16 +557,25 @@ else:
                 with tabs[portal_tabs_map.index("Admin: Input Domestic Kernel Prices")]:
                     st.header("📝 Input Domestic Kernel Prices (TL)")
                     
-                    # Reuse same state variables for fetch as they are common currency rates
-                    if 'rate_usd_val' not in st.session_state: st.session_state.rate_usd_val = 34.50
-                    if 'rate_eur_val' not in st.session_state: st.session_state.rate_eur_val = 37.20
+                    # Manage state for inputs (for Editing and Fetching)
                     if 'dom_usd' not in st.session_state: st.session_state.dom_usd = 34.50
                     if 'dom_eur' not in st.session_state: st.session_state.dom_eur = 37.20
+                    if 'l1' not in st.session_state: st.session_state.l1 = 0.0
+                    if 'l2' not in st.session_state: st.session_state.l2 = 0.0
+                    if 'l3' not in st.session_state: st.session_state.l3 = 0.0
+                    if 'g1' not in st.session_state: st.session_state.g1 = 0.0
+                    if 'g2' not in st.session_state: st.session_state.g2 = 0.0
+                    if 'g3' not in st.session_state: st.session_state.g3 = 0.0
+                    if 'bur' not in st.session_state: st.session_state.bur = 0.0
+                    if 'cik' not in st.session_state: st.session_state.cik = 0.0
+                    if 'cur' not in st.session_state: st.session_state.cur = 0.0
+                    if 'dom_date' not in st.session_state: st.session_state.dom_date = datetime.now().date()
+                    if 'dom_time' not in st.session_state: st.session_state.dom_time = datetime.now().time()
 
                     with st.container():
                         c_date, c_time, c_btn = st.columns([2, 2, 2])
-                        d_date_dom = c_date.date_input("Date", value=datetime.now() - timedelta(days=1), key="dom_date")
-                        t_time_dom = c_time.time_input("Time (HH:MM)", value=datetime.now().time(), step=60, key="dom_time")
+                        d_date_dom = c_date.date_input("Date", key="dom_date")
+                        t_time_dom = c_time.time_input("Time (HH:MM)", step=60, key="dom_time")
                         c_btn.write("")
                         if c_btn.button("Fetch exchange rates", key="dom_fetch"):
                             with st.spinner("Fetching..."):
@@ -644,6 +586,17 @@ else:
                                     st.success(f"Fetched: USD {fetched['USD']:.4f}")
                                 else: st.warning("Could not fetch.")
                     
+                    edit_mode = st.session_state.edit_domestic_id is not None
+                    form_label = f"Update Record #{st.session_state.edit_domestic_id}" if edit_mode else "Save Domestic Entry"
+                    
+                    if edit_mode:
+                        st.info(f"✏️ Editing mode active for ID {st.session_state.edit_domestic_id}")
+                        if st.button("Cancel Edit"):
+                            st.session_state.edit_domestic_id = None
+                            # Reset defaults
+                            for k in ['l1','l2','l3','g1','g2','g3','bur','cik','cur']: st.session_state[k] = 0.0
+                            st.rerun()
+
                     with st.form("domestic_input_form"):
                         st.subheader("Product Prices (TL/kg)")
                         c1, c2, c3 = st.columns(3)
@@ -669,19 +622,43 @@ else:
                         r_usd_dom = ce1.number_input("USD/TRY", min_value=0.0, step=0.01, format="%.4f", key="dom_usd")
                         r_eur_dom = ce2.number_input("EUR/TRY", min_value=0.0, step=0.01, format="%.4f", key="dom_eur")
 
-                        if st.form_submit_button("Save Domestic Entry"):
+                        if st.form_submit_button(form_label):
+                            # --- AUTO-FILL LOGIC (Only for New Entries) ---
+                            final_vals = {
+                                "price_levant_11_13": p_l1, "price_levant_12_13": p_l2, "price_levant_13_15": p_l3,
+                                "price_giresun_11_13": p_g1, "price_giresun_12_13": p_g2, "price_giresun_13_15": p_g3,
+                                "price_burusuk": p_bur, "price_cikinti": p_cik, "price_curuk": p_cur
+                            }
+                            
+                            if not edit_mode: # Only autofill if NOT editing
+                                last_entry = get_last_domestic_entry()
+                                if last_entry:
+                                    for k, v in final_vals.items():
+                                        if v == 0.0:
+                                            final_vals[k] = last_entry.get(k, 0.0)
+                            
+                            # Prepare Payload
                             payload = {
                                 "date": str(d_date_dom),
                                 "time_of_day": str(t_time_dom),
-                                "price_levant_11_13": p_l1, "price_levant_12_13": p_l2, "price_levant_13_15": p_l3,
-                                "price_giresun_11_13": p_g1, "price_giresun_12_13": p_g2, "price_giresun_13_15": p_g3,
-                                "price_burusuk": p_bur, "price_cikinti": p_cik, "price_curuk": p_cur,
                                 "rate_usd_try": r_usd_dom, "rate_eur_try": r_eur_dom,
                                 "created_by": st.session_state.user['email']
                             }
+                            payload.update(final_vals)
+
                             try:
-                                supabase.table("domestic_kernel_prices").insert(payload).execute()
-                                st.success("Saved!")
+                                if edit_mode:
+                                    # Update existing
+                                    supabase.table("domestic_kernel_prices").update(payload).eq("id", st.session_state.edit_domestic_id).execute()
+                                    st.success("Updated successfully!")
+                                    st.session_state.edit_domestic_id = None
+                                else:
+                                    # Insert new
+                                    supabase.table("domestic_kernel_prices").insert(payload).execute()
+                                    st.success("Saved (with auto-fill applied where needed)!")
+                                
+                                # Reset form defaults
+                                for k in ['l1','l2','l3','g1','g2','g3','bur','cik','cur']: st.session_state[k] = 0.0
                                 time.sleep(1); st.rerun()
                             except Exception as e: st.error(f"Error: {e}")
 
@@ -716,7 +693,7 @@ else:
                         st.markdown("---"); st.subheader("3. Ödeme ve Kayıt"); f1, f2, f3 = st.columns(3); doc_num = f1.text_input("Makbuz / Fatura No"); pay_amount = f2.number_input("Ödenen Tutar", 0.0); pay_method = f3.selectbox("Ödeme Yöntemi", ["Nakit", "Banka", "Çek"]); 
                         if reg_type != "Emanet": st.metric("Kalan Bakiye", f"{total_val - pay_amount:,.2f} TL")
                         if st.form_submit_button("✅ Şube Girişini Kaydet"):
-                            payload = {"created_by": st.session_state.user['email'], "status": "Pending Arrival", "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type, "id_number": id_num, "city": city, "district": dist_in, "village": vill_in, "phone_number": contact, "cert_status": cert_status, "reg_type": reg_type, "location": location, "item_type": hazelnut_type, "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num, "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount, "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag, "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv, "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over, "moisture": val_moist, "calculated_randiman": val_randiman, "gross_price_50": price_gross, "actual_unit_price": price_net_deducted}; insert_record("purchases", payload); st.success("Şube Girişi Kaydedildi!")
+                            payload = {"created_by": st.session_state.user['email'], "status": "Pending Arrival", "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type, "id_number": id_num, "city": city, "district": dist_in, "village": vill_in, "phone_number": contact, "cert_status": cert_status, "reg_type": reg_type, "location": location, "item_type": hazelnut_type, "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num, "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount, "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag, "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv, "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over, "moisture": val_moist, "calculated_randiman": val_randiman, "gross_price_50": price_gross, "net_price_50": net_price_50, "actual_unit_price": unit_price}; insert_record("purchases", payload); st.success("Şube Girişi Kaydedildi!")
 
             if "🏭 Fabrika Alım (Factory)" in tabs_to_show:
                 with tabs[tabs_to_show.index("🏭 Fabrika Alım (Factory)")]:
