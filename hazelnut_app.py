@@ -32,7 +32,7 @@ if 'edit_domestic_id' not in st.session_state: st.session_state.edit_domestic_id
 if 'edit_export_id' not in st.session_state: st.session_state.edit_export_id = None
 if 'edit_market_id' not in st.session_state: st.session_state.edit_market_id = None
 
-# --- DATA LOAD FLAGS (To prevent overwriting user input) ---
+# --- DATA LOAD FLAGS ---
 if 'dom_data_loaded' not in st.session_state: st.session_state.dom_data_loaded = False
 if 'exp_data_loaded' not in st.session_state: st.session_state.exp_data_loaded = False
 if 'mkt_data_loaded' not in st.session_state: st.session_state.mkt_data_loaded = False
@@ -441,17 +441,45 @@ else:
                     st.header("🏢 Domestic Kernel Prices (TL)")
                     df_dom = get_domestic_prices()
                     if not df_dom.empty:
-                        fig = go.Figure()
+                        # Define the mapping of DB column names to Display names
                         lines_map = {
                             "price_levant_11_13": "Levant 11-13", "price_levant_12_13": "Levant 12-13", "price_levant_13_15": "Levant 13-15",
                             "price_giresun_11_13": "Giresun 11-13", "price_giresun_12_13": "Giresun 12-13", "price_giresun_13_15": "Giresun 13-15",
                             "price_burusuk": "Burusuk", "price_cikinti": "Cikinti", "price_curuk": "Curuk"
                         }
-                        for col, name in lines_map.items():
-                            if col in df_dom.columns:
-                                fig.add_trace(go.Scatter(x=df_dom['date'], y=df_dom[col], name=name, mode='lines'))
-                        fig.update_layout(title=dict(text="Domestic Kernel Prices (TL/kg)"), xaxis=dict(title="Date", rangeslider=dict(visible=True), type="date"), yaxis=dict(title="Price (TL)"), legend=dict(orientation="h", yanchor="top", y=-0.3, xanchor="center", x=0.5), height=600)
-                        st.plotly_chart(fig, use_container_width=True)
+
+                        # Function to build charts for Domestic Prices (TL, USD, EUR)
+                        def build_dom_chart(title, mode):
+                            fig = go.Figure()
+                            for col, name in lines_map.items():
+                                if col in df_dom.columns:
+                                    y_vals = df_dom[col]
+                                    
+                                    # Handle Currency Conversion Per Entry
+                                    if mode == 'USD':
+                                        # Use rate_usd_try from the same row. Avoid div by zero.
+                                        y_vals = df_dom.apply(lambda row: row[col] / row['rate_usd_try'] if row.get('rate_usd_try', 0) > 0 else 0, axis=1)
+                                    elif mode == 'EUR':
+                                        # Use rate_eur_try from the same row. Avoid div by zero.
+                                        y_vals = df_dom.apply(lambda row: row[col] / row['rate_eur_try'] if row.get('rate_eur_try', 0) > 0 else 0, axis=1)
+                                    
+                                    fig.add_trace(go.Scatter(x=df_dom['date'], y=y_vals, name=name, mode='lines'))
+                            
+                            fig.update_layout(
+                                title=dict(text=title),
+                                xaxis=dict(title="Date", rangeslider=dict(visible=True), type="date"),
+                                yaxis=dict(title="Price"),
+                                legend=dict(orientation="h", yanchor="top", y=-0.3, xanchor="center", x=0.5),
+                                height=600,
+                                hovermode="x unified"
+                            )
+                            return fig
+
+                        # Display the 3 Graphs
+                        st.plotly_chart(build_dom_chart("1. Domestic Kernel Prices (TL/kg)", 'TL'), use_container_width=True)
+                        st.plotly_chart(build_dom_chart("2. Domestic Kernel Prices (USD/kg)", 'USD'), use_container_width=True)
+                        st.plotly_chart(build_dom_chart("3. Domestic Kernel Prices (EUR/kg)", 'EUR'), use_container_width=True)
+
                     else: st.info("No domestic price data available.")
 
             # TAB 2: EXPORT FIGURES GRAPH
@@ -770,7 +798,7 @@ else:
                         st.markdown("---"); st.subheader("3. Ödeme ve Kayıt"); f1, f2, f3 = st.columns(3); doc_num = f1.text_input("Makbuz / Fatura No"); pay_amount = f2.number_input("Ödenen Tutar", 0.0); pay_method = f3.selectbox("Ödeme Yöntemi", ["Nakit", "Banka", "Çek"]); 
                         if reg_type != "Emanet": st.metric("Kalan Bakiye", f"{total_val - pay_amount:,.2f} TL")
                         if st.form_submit_button("✅ Şube Girişini Kaydet"):
-                            payload = {"created_by": st.session_state.user['email'], "status": "Pending Arrival", "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type, "id_number": id_num, "city": city, "district": dist_in, "village": vill_in, "phone_number": contact, "cert_status": cert_status, "reg_type": reg_type, "location": location, "item_type": hazelnut_type, "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num, "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount, "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag, "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv, "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over, "moisture": val_moist, "calculated_randiman": val_randiman, "gross_price_50": price_gross, "actual_unit_price": price_net_deducted}; insert_record("purchases", payload); st.success("Şube Girişi Kaydedildi!")
+                            payload = {"created_by": st.session_state.user['email'], "status": "Pending Arrival", "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type, "id_number": id_num, "city": city, "district": dist_in, "village": vill_in, "phone_number": contact, "cert_status": cert_status, "reg_type": reg_type, "location": location, "item_type": hazelnut_type, "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num, "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount, "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag, "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv, "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over, "moisture": val_moist, "calculated_randiman": val_randiman, "gross_price_50": price_gross, "net_price_50": net_price_50, "actual_unit_price": unit_price}; insert_record("purchases", payload); st.success("Şube Girişi Kaydedildi!")
 
             if "🏭 Fabrika Alım (Factory)" in tabs_to_show:
                 with tabs[tabs_to_show.index("🏭 Fabrika Alım (Factory)")]:
