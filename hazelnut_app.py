@@ -586,6 +586,7 @@ else:
                     
                     # Session States
                     if 'mkt_date' not in st.session_state: st.session_state.mkt_date = datetime.now().date() - timedelta(days=1)
+                    if 'mkt_time' not in st.session_state: st.session_state.mkt_time = datetime.now().time()
                     if 'mkt_tombul' not in st.session_state: st.session_state.mkt_tombul = 0.0
                     if 'mkt_cakildak' not in st.session_state: st.session_state.mkt_cakildak = 0.0
                     if 'mkt_levant' not in st.session_state: st.session_state.mkt_levant = 0.0
@@ -622,7 +623,7 @@ else:
                     with st.container():
                         c_date, c_time, c_btn = st.columns([2, 2, 2])
                         d_in = c_date.date_input("Date", key="mkt_date")
-                        t_in = c_time.time_input("Time (HH:MM)", value=datetime.now().time()) # Time not stored for market currently, but needed for fetch
+                        t_in = c_time.time_input("Time (HH:MM)", step=60, key="mkt_time")
                         c_btn.write("")
                         if c_btn.button("Fetch rates", key="mkt_fetch"):
                             with st.spinner("Fetching..."):
@@ -810,7 +811,7 @@ else:
                         st.markdown("---"); st.subheader("3. Ödeme ve Kayıt"); f1, f2, f3 = st.columns(3); doc_num = f1.text_input("Makbuz / Fatura No"); pay_amount = f2.number_input("Ödenen Tutar", 0.0); pay_method = f3.selectbox("Ödeme Yöntemi", ["Nakit", "Banka", "Çek"]); 
                         if reg_type != "Emanet": st.metric("Kalan Bakiye", f"{total_val - pay_amount:,.2f} TL")
                         if st.form_submit_button("✅ Şube Girişini Kaydet"):
-                            payload = {"created_by": st.session_state.user['email'], "status": "Pending Arrival", "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type, "id_number": id_num, "city": city, "district": dist_in, "village": vill_in, "phone_number": contact, "cert_status": cert_status, "reg_type": reg_type, "location": location, "item_type": hazelnut_type, "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num, "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount, "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag, "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv, "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over, "moisture": val_moist, "calculated_randiman": val_randiman, "gross_price_50": price_gross, "net_price_50": net_price_50, "actual_unit_price": unit_price}; insert_record("purchases", payload); st.success("Fabrika Girişi Kaydedildi!")
+                            payload = {"created_by": st.session_state.user['email'], "status": "Pending Arrival", "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type, "id_number": id_num, "city": city, "district": dist_in, "village": vill_in, "phone_number": contact, "cert_status": cert_status, "reg_type": reg_type, "location": location, "item_type": hazelnut_type, "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num, "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount, "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag, "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv, "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over, "moisture": val_moist, "calculated_randiman": val_randiman, "gross_price_50": price_gross, "net_price_50": net_price_50, "actual_unit_price": unit_price}; insert_record("purchases", payload); st.success("Şube Girişi Kaydedildi!")
                     
                     with f_tab2:
                         st.subheader("Malzeme Seçimi"); material_cats = ["Ambalaj Malzemeleri", "Bakım Malzemeleri", "Ofis Malzemeleri", "Temizlik Malzemeleri", "Eşantiyon & Hediye", "İş Kıyafetleri", "Gıda ve Mutfak", "Diğer"]; c_cat, c_item = st.columns(2); selected_mat_cat = c_cat.selectbox("Kategori", material_cats, key="mat_cat_fab"); 
