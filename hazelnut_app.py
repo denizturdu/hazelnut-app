@@ -32,7 +32,7 @@ if 'edit_domestic_id' not in st.session_state: st.session_state.edit_domestic_id
 if 'edit_export_id' not in st.session_state: st.session_state.edit_export_id = None
 if 'edit_market_id' not in st.session_state: st.session_state.edit_market_id = None
 
-# --- DATA LOAD FLAGS ---
+# --- DATA LOAD FLAGS (To prevent overwriting user input) ---
 if 'dom_data_loaded' not in st.session_state: st.session_state.dom_data_loaded = False
 if 'exp_data_loaded' not in st.session_state: st.session_state.exp_data_loaded = False
 if 'mkt_data_loaded' not in st.session_state: st.session_state.mkt_data_loaded = False
@@ -248,7 +248,9 @@ def render_delete_table(df, table_name, date_col, page_state_key):
     elif table_name == "market_prices": 
         cols_cfg = [2, 1, 1, 1, 1, 1, 1]; headers = ["Date", "Tombul", "Cakildak", "Levant", "USD", "EUR", "Action"]
     elif table_name == "domestic_kernel_prices":
-        cols_cfg = [1.5, 1, 1,1,1, 1,1,1, 1,1,1, 1,1, 1.5]; headers = ["Date", "Time", "Levant 11-13", "Levant 12-13", "Levant 13-15", "Giresun 11-13", "Giresun 12-13", "Giresun 13-15", "Burusuk", "Cikinti", "Curuk", "USD", "EUR", "Action"]
+        # UPDATED COLUMN NAMES AND COUNT
+        cols_cfg = [1.5, 1, 1,1,1, 1,1,1, 1,1,1, 1,1, 1.5]
+        headers = ["Date", "Time", "Levant 11-13", "Levant 12-13", "Levant 13-15", "Giresun 11-13", "Giresun 12-13", "Giresun 13-15", "Burusuk", "Cikinti", "Curuk", "USD/TRY", "EUR/TRY", "Action"]
     else: st.error("Unknown table config"); return
     h_cols = st.columns(cols_cfg)
     for i, h in enumerate(headers): h_cols[i].markdown(f"**{h}**")
@@ -621,7 +623,7 @@ else:
                     df_hist = get_market_prices()
                     render_delete_table(df_hist, "market_prices", "date", "page_market")
 
-            # ADMIN: DOMESTIC INPUT (Already Done, kept consistent)
+            # ADMIN: DOMESTIC INPUT
             if "Admin: Input Domestic Kernel Prices" in portal_tabs_map:
                 with tabs[portal_tabs_map.index("Admin: Input Domestic Kernel Prices")]:
                     st.header("📝 Input Domestic Kernel Prices (TL)")
@@ -768,7 +770,7 @@ else:
                         st.markdown("---"); st.subheader("3. Ödeme ve Kayıt"); f1, f2, f3 = st.columns(3); doc_num = f1.text_input("Makbuz / Fatura No"); pay_amount = f2.number_input("Ödenen Tutar", 0.0); pay_method = f3.selectbox("Ödeme Yöntemi", ["Nakit", "Banka", "Çek"]); 
                         if reg_type != "Emanet": st.metric("Kalan Bakiye", f"{total_val - pay_amount:,.2f} TL")
                         if st.form_submit_button("✅ Şube Girişini Kaydet"):
-                            payload = {"created_by": st.session_state.user['email'], "status": "Pending Arrival", "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type, "id_number": id_num, "city": city, "district": dist_in, "village": vill_in, "phone_number": contact, "cert_status": cert_status, "reg_type": reg_type, "location": location, "item_type": hazelnut_type, "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num, "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount, "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag, "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv, "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over, "moisture": val_moist, "calculated_randiman": val_randiman, "gross_price_50": price_gross, "net_price_50": net_price_50, "actual_unit_price": unit_price}; insert_record("purchases", payload); st.success("Şube Girişi Kaydedildi!")
+                            payload = {"created_by": st.session_state.user['email'], "status": "Pending Arrival", "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type, "id_number": id_num, "city": city, "district": dist_in, "village": vill_in, "phone_number": contact, "cert_status": cert_status, "reg_type": reg_type, "location": location, "item_type": hazelnut_type, "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num, "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount, "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag, "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv, "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over, "moisture": val_moist, "calculated_randiman": val_randiman, "gross_price_50": price_gross, "actual_unit_price": price_net_deducted}; insert_record("purchases", payload); st.success("Şube Girişi Kaydedildi!")
 
             if "🏭 Fabrika Alım (Factory)" in tabs_to_show:
                 with tabs[tabs_to_show.index("🏭 Fabrika Alım (Factory)")]:
