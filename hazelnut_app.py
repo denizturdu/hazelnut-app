@@ -428,7 +428,16 @@ else:
                                     elif mode_type == 'USD': y_vals = df_prices[col_name] / df_prices['rate_usd_try']
                                     elif mode_type == 'EUR': y_vals = df_prices[col_name] / df_prices['rate_eur_try']
                                     fig.add_trace(go.Scatter(x=df_prices['date'], y=y_vals, name=h_type, line=dict(color=colors[h_type], width=3), mode='lines', fill=None))
-                            fig.update_layout(title=dict(text=title), xaxis=dict(title="Date", rangeslider=dict(visible=True), type="date", range=[start_window, max_db_date]), yaxis=dict(title=dict(text=y_label, font=dict(color="black"))), hovermode="x unified", height=500)
+                            fig.update_layout(
+                                title=dict(text=title),
+                                xaxis=dict(title="Date", rangeslider=dict(visible=True), type="date", range=[start_window, max_db_date]),
+                                yaxis=dict(title=dict(text=y_label, font=dict(color="black"))),
+                                showlegend=True,
+                                legend=dict(orientation="h", yanchor="top", y=-0.3, xanchor="center", x=0.5),
+                                margin=dict(b=150),
+                                hovermode="x unified",
+                                height=500
+                            )
                             return fig
                         st.plotly_chart(build_chart("1. Inshell Prices (TL/kg)", 'TL', "Price (TL)"), use_container_width=True)
                         st.plotly_chart(build_chart("2. Inshell Prices (USD/kg)", 'USD', "Price (USD)"), use_container_width=True)
@@ -469,15 +478,10 @@ else:
                                 title=dict(text=title),
                                 xaxis=dict(title="Date", rangeslider=dict(visible=True), type="date"),
                                 yaxis=dict(title="Price"),
-                                # Explicitly set showlegend=True and adjust location to top left
+                                # Explicitly set showlegend=True and adjust margin to prevent cutting off
                                 showlegend=True,
-                                legend=dict(
-                                    yanchor="top",
-                                    y=0.99,
-                                    xanchor="left",
-                                    x=0.01,
-                                    bgcolor="rgba(255, 255, 255, 0.5)" # Semi-transparent background
-                                ),
+                                legend=dict(orientation="h", yanchor="top", y=-0.3, xanchor="center", x=0.5),
+                                margin=dict(b=150), # Increased bottom margin for legend
                                 height=600,
                                 hovermode="x unified"
                             )
@@ -806,43 +810,7 @@ else:
                         st.markdown("---"); st.subheader("3. Ödeme ve Kayıt"); f1, f2, f3 = st.columns(3); doc_num = f1.text_input("Makbuz / Fatura No"); pay_amount = f2.number_input("Ödenen Tutar", 0.0); pay_method = f3.selectbox("Ödeme Yöntemi", ["Nakit", "Banka", "Çek"]); 
                         if reg_type != "Emanet": st.metric("Kalan Bakiye", f"{total_val - pay_amount:,.2f} TL")
                         if st.form_submit_button("✅ Şube Girişini Kaydet"):
-                            payload = {"created_by": st.session_state.user['email'], "status": "Pending Arrival", "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type, "id_number": id_num, "city": city, "district": dist_in, "village": vill_in, "phone_number": contact, "cert_status": cert_status, "reg_type": reg_type, "location": location, "item_type": hazelnut_type, "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num, "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount, "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag, "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv, "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over, "moisture": val_moist, "calculated_randiman": val_randiman, "gross_price_50": price_gross, "net_price_50": net_price_50, "actual_unit_price": unit_price}; insert_record("purchases", payload); st.success("Şube Girişi Kaydedildi!")
-
-            if "🏭 Fabrika Alım (Factory)" in tabs_to_show:
-                with tabs[tabs_to_show.index("🏭 Fabrika Alım (Factory)")]:
-                    st.subheader("Fabrika Alım Operasyonları")
-                    f_tab1, f_tab2, f_tab3 = st.tabs(["🌰 Fındık Alımı", "📦 Malzeme Alımı", "⚙️ Makine & Hizmet"])
-                    with f_tab1:
-                        hazelnut_cat = st.selectbox("Fındık Kategorisi", ["Kabuklu Fındık", "İç Fındık", "İşlenmiş Fındık"], key="fab_findik_cat")
-                        with st.form("fab_hazelnut_form"):
-                            st.subheader("1. Müstahsil & Tedarikçi"); c1, c2, c3 = st.columns(3); supplier = c1.text_input("Tedarikçi Adı"); sup_type = c2.selectbox("Tedarikçi Tipi", ["Müstahsil", "Tüccar", "Şirket"]); id_num = c3.text_input("TCKN / VKN"); c4, c5, c6 = st.columns(3); city = c4.text_input("İl"); dist_in = c5.text_input("İlçe"); vill_in = c6.text_input("Köy / Mahalle"); c_cont, c_cert = st.columns(2); contact = c_cont.text_input("Telefon No"); cert_status = c_cert.selectbox("Sertifikasyon", ["Yok", "Organik", "Rainforest Alliance", "Avella"]); st.markdown("---"); c7, c8, c9 = st.columns(3); reg_type = c7.selectbox("Alım Şekli", ["Satın Alma", "Emanet"]); location = c8.selectbox("Teslimat Yeri", ["Fabrika", "Tarla", "Avella Şube"]); hazelnut_type = c9.selectbox("Fındık Çeşidi", ["Karışık", "Giresun Tombul", "Çakıldak", "Kara", "Sivri", "Palaz", "Badem", "Foşa", "Yomra"]); st.markdown("---"); st.subheader("2. Detaylı Kalite Analizi (Laboratuvar)"); k1, k2, k3 = st.columns(3); label_sample = "Kabuklu Numune Ağırlığı (g)" if hazelnut_cat == "Kabuklu Fındık" else "İç Numune Ağırlığı (g)"; w_sample = k1.number_input(label_sample, value=250.0 if hazelnut_cat == "Kabuklu Fındık" else 100.0); lab_cal = k2.selectbox("Kalibre", CALIBRE_OPTIONS); val_moist = k3.number_input("Nem (%)", 0.0, 100.0, 5.0); k4, k5 = st.columns(2); l_ffa = k4.number_input("FFA (%)", 0.0, 100.0, 0.0); l_perox = k5.number_input("Peroksit (meqO2/kg)", 0.0); st.markdown("##### B. Fiziksel Kusurlar (Gram)"); r1c1, r1c2, r1c3, r1c4 = st.columns(4); w_good = r1c1.number_input("Sağlam İç (g)", 0.0); w_vis_rot = r1c2.number_input("Görünen Çürük (g)", 0.0); w_hid_rot = r1c3.number_input("Gizli Çürük (g)", 0.0); w_worm = r1c4.number_input("Kurt Yenikli (g)", 0.0); r2c1, r2c2, r2c3, r2c4 = st.columns(4); w_vis_mold = r2c1.number_input("Görünen Küflü (g)", 0.0); w_hid_mold = r2c2.number_input("Gizli Küflü (g)", 0.0); w_vis_tumor = r2c3.number_input("Görünen Urlu (g)", 0.0); w_hid_tumor = r2c4.number_input("Gizli Urlu (g)", 0.0); r3c1, r3c2, r3c3, r3c4 = st.columns(4); w_shriv = r3c1.number_input("Buruşuk İç (g)", 0.0); w_lemon = r3c2.number_input("Limoni (g)", 0.0); w_decayed = r3c3.number_input("Vurgun (g)", 0.0); w_broken = r3c4.number_input("Kırık (g)", 0.0); r4c1, r4c2, r4c3, r4c4 = st.columns(4); w_twin = r4c1.number_input("İkiz (g)", 0.0); w_other = r4c2.number_input("Diğer Tipler (g)", 0.0); w_under = r4c3.number_input("Elek Altı (g)", 0.0); w_over = r4c4.number_input("Elek Üstü (g)", 0.0); st.markdown("##### C. Yabancı Madde & Mikrobiyolojik"); m1, m2, m3, m4 = st.columns(4); c_membrane = m1.number_input("Zar Atmayan Tane (adet)", 0); w_shell = m2.number_input("Kabuk (g)", 0.0); c_foreign = m3.number_input("Yabancı Madde (tane)", 0); size_1_g = 0.0; undersize_g = 0.0
-                            if hazelnut_cat == "Kabuklu Fındık": st.markdown("##### D. Kabuklu Ekstra Boylama (Gram)"); ex1, ex2 = st.columns(2); size_1_g = ex1.number_input("1. Numara İç - 13 mm üzeri (g)", 0.0); undersize_g = ex2.number_input("Elek Altı İç - 9 mm altı (g)", 0.0)
-                            st.markdown("---"); m_row2_1, m_row2_2, m_row2_3, m_row2_4 = st.columns(4); l_salm = m_row2_1.text_input("Salmonella"); l_ecoli = m_row2_2.text_input("E. Coli"); l_b1 = m_row2_3.number_input("Aflatoksin B1 (ppb)", 0.0); l_tot = m_row2_4.number_input("Aflatoksin Total (ppb)", 0.0)
-                            st.markdown("---"); calc_btn = st.form_submit_button("📊 Rapor Oluştur"); val_randiman = calculate_randiman(w_sample, w_good, w_shriv)
-                            if calc_btn: st.info("📊 **Canlı Analiz Raporu**"); calc_inputs = {"Sağlam İç": w_good, "Görünen Çürük": w_vis_rot, "Gizli Çürük": w_hid_rot, "Görünen Küflü": w_vis_mold, "Gizli Küflü": w_hid_mold, "Görünen Urlu": w_vis_tumor, "Gizli Urlu": w_hid_tumor, "Kurt Yenikli": w_worm, "Buruşuk İç": w_shriv, "Limoni": w_lemon, "Vurgun": w_decayed, "Kırık": w_broken, "İkiz": w_twin, "Diğer Tipler": w_other, "Elek Altı": w_under, "Elek Üstü": w_over, "Kabuk": w_shell}; report_data = []
-                            if w_sample > 0 and calc_btn:
-                                for k, v in calc_inputs.items():
-                                    pct = (v / w_sample) * 100; 
-                                    if v > 0: report_data.append({"Parametre": k, "Girdi (g)": f"{v} g", "Sonuç": f"%{pct:.2f}"})
-                                if hazelnut_cat == "Kabuklu Fındık":
-                                    if size_1_g > 0: report_data.append({"Parametre": "1. Numara (13mm+)", "Girdi (g)": f"{size_1_g} g", "Sonuç": f"%{(size_1_g/w_sample)*100:.2f}"})
-                                    if undersize_g > 0: report_data.append({"Parametre": "Elek Altı (9mm-)", "Girdi (g)": f"{undersize_g} g", "Sonuç": f"%{(undersize_g/w_sample)*100:.2f}"})
-                                if val_moist > 0: report_data.append({"Parametre": "Nem", "Girdi (g)": "-", "Sonuç": f"%{val_moist}"})
-                                if l_ffa > 0: report_data.append({"Parametre": "FFA", "Girdi (g)": "-", "Sonuç": f"%{l_ffa}"})
-                                if l_perox > 0: report_data.append({"Parametre": "Peroksit", "Girdi (g)": "-", "Sonuç": f"{l_perox} meq"})
-                                st.dataframe(pd.DataFrame(report_data), use_container_width=True)
-                            st.markdown("---"); st.subheader("Miktar ve Fiyatlandırma"); cq1, cq2 = st.columns(2)
-                            with cq1: net_weight = st.number_input("Toplam Net Ağırlık (kg)", min_value=0.0); st.caption("Paketleme Detayları"); p1, p2, p3 = st.columns(3); cnt_nylon = p1.number_input("Naylon", min_value=0); cnt_jute = p2.number_input("Jüt", min_value=0); cnt_bigbag = p3.number_input("Big Bag", min_value=0)
-                            if reg_type == "Emanet": total_val = 0.0; price_gross = 0.0; price_net_deducted = 0.0
-                            else:
-                                with cq2:
-                                    if hazelnut_cat == "Kabuklu Fındık": price_gross = st.number_input("Borsa Fiyatı (50 Randıman)", value=120.0); net_price_50 = price_gross / 1.0245; price_net_deducted = net_price_50 * (val_randiman / 50.0); 
-                                    else: price_gross = st.number_input("Gösterge Fiyatı (TL)", min_value=0.0); price_net_deducted = st.number_input("Net Fiyat (TL)", min_value=0.0)
-                                    total_val = price_net_deducted * net_weight; st.success(f"**TOPLAM TUTAR:** {total_val:,.2f} TL")
-                            st.markdown("---"); st.subheader("3. Ödeme ve Kayıt"); f1, f2, f3 = st.columns(3); doc_num = f1.text_input("Makbuz / Fatura No"); pay_amount = f2.number_input("Ödenen Tutar", 0.0); pay_method = f3.selectbox("Ödeme Yöntemi", ["Nakit", "Banka", "Çek"]); 
-                            if reg_type != "Emanet": st.metric("Kalan Bakiye", f"{total_val - pay_amount:,.2f} TL")
-                            if st.form_submit_button("✅ Fabrika Girişini Kaydet"):
-                                payload = {"created_by": st.session_state.user['email'], "status": "Pending Arrival", "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type, "id_number": id_num, "city": city, "district": dist_in, "village": vill_in, "phone_number": contact, "cert_status": cert_status, "reg_type": reg_type, "location": location, "item_type": hazelnut_type, "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num, "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount, "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag, "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv, "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over, "moisture": val_moist, "calculated_randiman": val_randiman, "gross_price_50": price_gross, "actual_unit_price": price_net_deducted}; insert_record("purchases", payload); st.success("Fabrika Girişi Kaydedildi!")
+                            payload = {"created_by": st.session_state.user['email'], "status": "Pending Arrival", "category": hazelnut_cat, "supplier": supplier, "supplier_type": sup_type, "id_number": id_num, "city": city, "district": dist_in, "village": vill_in, "phone_number": contact, "cert_status": cert_status, "reg_type": reg_type, "location": location, "item_type": hazelnut_type, "qty_ordered": net_weight, "total_value": total_val, "document_number": doc_num, "payment_amount": pay_amount, "remaining_balance": total_val - pay_amount, "count_nylon": cnt_nylon, "count_jute": cnt_jute, "count_bigbag": cnt_bigbag, "weight_sample": w_sample, "weight_good": w_good, "weight_shrivelled": w_shriv, "weight_visible_rotten": w_vis_rot, "weight_hidden_rotten": w_hid_rot, "weight_tumor": w_tumor, "weight_undersize": w_under, "weight_oversize": w_over, "moisture": val_moist, "calculated_randiman": val_randiman, "gross_price_50": price_gross, "net_price_50": net_price_50, "actual_unit_price": unit_price}; insert_record("purchases", payload); st.success("Fabrika Girişi Kaydedildi!")
                     
                     with f_tab2:
                         st.subheader("Malzeme Seçimi"); material_cats = ["Ambalaj Malzemeleri", "Bakım Malzemeleri", "Ofis Malzemeleri", "Temizlik Malzemeleri", "Eşantiyon & Hediye", "İş Kıyafetleri", "Gıda ve Mutfak", "Diğer"]; c_cat, c_item = st.columns(2); selected_mat_cat = c_cat.selectbox("Kategori", material_cats, key="mat_cat_fab"); 
