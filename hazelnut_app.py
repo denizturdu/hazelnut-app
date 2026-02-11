@@ -41,6 +41,13 @@ if 'mkt_data_loaded' not in st.session_state: st.session_state.mkt_data_loaded =
 if 'reset_domestic_form' not in st.session_state: st.session_state.reset_domestic_form = False
 if 'domestic_success_msg' not in st.session_state: st.session_state.domestic_success_msg = None
 
+if 'reset_export_form' not in st.session_state: st.session_state.reset_export_form = False
+if 'export_success_msg' not in st.session_state: st.session_state.export_success_msg = None
+
+if 'reset_market_form' not in st.session_state: st.session_state.reset_market_form = False
+if 'market_success_msg' not in st.session_state: st.session_state.market_success_msg = None
+
+
 # Pagination States
 if 'page_export' not in st.session_state: st.session_state.page_export = 0
 if 'page_market' not in st.session_state: st.session_state.page_market = 0
@@ -312,6 +319,15 @@ if not st.session_state.user:
             if user:
                 log_login(user['email'])
                 st.session_state.user = user; st.session_state.role = user['role']
+                
+                # --- LANDING PAGE LOGIC ---
+                if user['role'] == 'customer':
+                    st.session_state.active_module = CUSTOMER_PORTAL_NAME
+                elif 4 in user.get('allowed_modules', []):
+                     st.session_state.active_module = MODULE_MAP[4]
+                else:
+                     st.session_state.active_module = CUSTOMER_PORTAL_NAME # Default fallback
+
                 st.success(f"Hoşgeldiniz, {user['email']} ({user['role']})"); time.sleep(0.5); st.rerun()
             else: st.error(msg)
     with tab_register:
@@ -335,7 +351,11 @@ if not st.session_state.user:
 else:
     user = st.session_state.user; role = st.session_state.role
     st.sidebar.info(f"👤 {user['email']}"); st.sidebar.caption(f"Rol: {role.upper()}")
-    if st.sidebar.button("Çıkış Yap"): st.session_state.user = None; st.session_state.role = None; st.rerun()
+    if st.sidebar.button("Çıkış Yap"): 
+        st.session_state.user = None
+        st.session_state.role = None
+        st.session_state.active_module = CUSTOMER_PORTAL_NAME # Reset to default
+        st.rerun()
 
     # --- PERMISSIONS ---
     def has_access(mod_id):
