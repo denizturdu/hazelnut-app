@@ -310,40 +310,27 @@ def render_delete_table(df, table_name, date_col, page_state_key):
 # ==========================================
 if not st.session_state.user:
     st.title("🌰 Avella Giriş Paneli")
-    tab_login, tab_register = st.tabs(["Giriş Yap (Login)", "Kayıt Ol (Register)"])
-    with tab_login:
-        email = st.text_input("E-posta", key="login_email")
-        password = st.text_input("Şifre", type="password", key="login_pass")
-        if st.button("Giriş Yap", type="primary"):
-            user, msg = login_user(email, password)
-            if user:
-                log_login(user['email'])
-                st.session_state.user = user; st.session_state.role = user['role']
-                
-                # --- LANDING PAGE LOGIC ---
-                if user['role'] == 'customer':
-                    st.session_state.active_module = CUSTOMER_PORTAL_NAME
-                elif 4 in user.get('allowed_modules', []):
-                     st.session_state.active_module = MODULE_MAP[4]
-                else:
-                     st.session_state.active_module = CUSTOMER_PORTAL_NAME # Default fallback
-
-                st.success(f"Hoşgeldiniz, {user['email']} ({user['role']})"); time.sleep(0.5); st.rerun()
-            else: st.error(msg)
-    with tab_register:
-        st.caption("Sadece Müşteriler veya Yeni Personel için")
-        new_email = st.text_input("E-posta", key="reg_email")
-        new_pass = st.text_input("Şifre Belirleyin", type="password", key="reg_pass")
-        new_pass_confirm = st.text_input("Şifre Tekrar", type="password", key="reg_pass2")
-        reg_role = "customer"
-        if "@avella" in new_email: st.info("Avella personeli olarak algılandı (Otomatik Onay)."); reg_role = "employee"
-        if st.button("Kayıt Ol"):
-            if new_pass != new_pass_confirm: st.error("Şifreler eşleşmiyor!")
-            elif len(new_pass) < 6: st.error("Şifre en az 6 karakter olmalı.")
+    
+    # Login Form
+    email = st.text_input("E-posta", key="login_email")
+    password = st.text_input("Şifre", type="password", key="login_pass")
+    
+    if st.button("Giriş Yap", type="primary"):
+        user, msg = login_user(email, password)
+        if user:
+            log_login(user['email'])
+            st.session_state.user = user; st.session_state.role = user['role']
+            
+            # --- LANDING PAGE LOGIC ---
+            if user['role'] == 'customer':
+                st.session_state.active_module = CUSTOMER_PORTAL_NAME
+            elif 4 in user.get('allowed_modules', []):
+                    st.session_state.active_module = MODULE_MAP[4]
             else:
-                success, msg = register_user(new_email, new_pass, role=reg_role)
-                if success: st.success(msg)
-                else: st.error(msg)
+                    st.session_state.active_module = CUSTOMER_PORTAL_NAME # Default fallback
+
+            st.success(f"Hoşgeldiniz, {user['email']} ({user['role']})"); time.sleep(0.5); st.rerun()
+        else: st.error(msg)
 
 # ==========================================
 # 🚀 MAIN APP - MULTI-MENU SIDEBAR
